@@ -80,7 +80,6 @@ impl<'a> Remote<'a> {
             .map_err(|e| eg!(e))
     }
 
-    // ssh fh@192.168.2.105 ''
     pub(super) fn get_occupied_ports(&self) -> Result<BTreeSet<u16>> {
         self.exec_cmd(
             r#"if [[ "Linux" = `uname -s` ]]; then ss -ntua | sed 's/ \+/ /g' | cut -d ' ' -f 5 | grep -o '[0-9]\+$'; elif [[ "Darwin" = `uname -s` ]]; then lsof -nP -i TCP | grep -o ':[0-9]\+[ -]'; else exit 1; fi"#,

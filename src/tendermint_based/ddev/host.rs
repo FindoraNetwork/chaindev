@@ -45,12 +45,12 @@ pub(super) enum HostOS {
     Unknown(String),
 }
 
-/// "ssh_remote_addr@ssh_user@ssh_remote_port@weight@ssh_local_privkey,..."
+/// "ssh_remote_addr#ssh_user#ssh_remote_port#weight#ssh_local_privkey,..."
 pub fn param_parse_hosts(hosts: &str) -> Result<BTreeMap<HostAddr, Host>> {
     let hosts = hosts
         .trim_matches(|c| c == ' ' || c == '\t')
         .split(',')
-        .map(|h| h.split('@').collect::<Vec<_>>())
+        .map(|h| h.split('#').collect::<Vec<_>>())
         .collect::<Vec<_>>();
 
     if !(hosts.iter().all(|h| 1 == h.len())
