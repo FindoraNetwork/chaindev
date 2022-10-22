@@ -26,3 +26,7 @@ update:
 
 doc:
 	cargo doc --all-features --open
+
+ci:
+	cargo check
+	cargo test -- --test-threads=1
