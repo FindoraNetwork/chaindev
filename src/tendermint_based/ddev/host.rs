@@ -53,13 +53,8 @@ pub fn param_parse_hosts(hosts: &str) -> Result<BTreeMap<HostAddr, Host>> {
         .map(|h| h.split('#').collect::<Vec<_>>())
         .collect::<Vec<_>>();
 
-    if !(hosts.iter().all(|h| 1 == h.len())
-        || hosts.iter().all(|h| 2 == h.len())
-        || hosts.iter().all(|h| 3 == h.len())
-        || hosts.iter().all(|h| 4 == h.len())
-        || hosts.iter().all(|h| 5 == h.len()))
-    {
-        return Err(eg!("inconsensist length amount fields"));
+    if hosts.iter().any(|h| h.is_empty()) || hosts.iter().any(|h| h.len() > 5) {
+        return Err(eg!("invalid length"));
     }
 
     let mut hosts = hosts
