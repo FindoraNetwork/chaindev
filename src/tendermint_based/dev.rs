@@ -8,6 +8,7 @@ use nix::{
     },
     unistd::{self, ForkResult},
 };
+use once_cell::sync::Lazy;
 use ruc::{cmd, *};
 use serde::{Deserialize, Serialize};
 use serde_json::Value as JsonValue;
@@ -26,6 +27,8 @@ use tendermint_config::{
 use toml_edit::{value as toml_value, Array, Document};
 
 pub use super::common::*;
+
+static GLOBAL_BASE_DIR: Lazy<String> = Lazy::new(|| format!("{}/__DEV__", &*BASE_DIR));
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EnvCfg {
@@ -911,7 +914,7 @@ impl PortsCache {
     }
 
     fn file_path() -> String {
-        format!("{}/DEV_ports_cache", &*GLOBAL_BASE_DIR)
+        format!("{}/ports_cache", &*GLOBAL_BASE_DIR)
     }
 
     fn load() -> Result<Self> {

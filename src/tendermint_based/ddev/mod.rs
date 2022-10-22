@@ -23,6 +23,8 @@ use vsdb::MapxRaw;
 pub use super::common::*;
 pub use host::{param_parse_hosts, Host, HostAddr, HostMap};
 
+static GLOBAL_BASE_DIR: Lazy<String> = Lazy::new(|| format!("{}/__D_DEV__", &*BASE_DIR));
+
 #[macro_export(crate)]
 macro_rules! check_errlist {
     ($errlist: expr) => {{
@@ -1186,7 +1188,7 @@ struct PortsCache {
 
 impl PortsCache {
     fn new() -> Self {
-        let vbd = format!("{}/D_DEV_ports_cache", &*GLOBAL_BASE_DIR);
+        let vbd = format!("{}/ports_cache", &*GLOBAL_BASE_DIR);
         pnk!(vsdb::vsdb_set_base_dir(&vbd));
         Self {
             vsdb_base_dir: vbd,

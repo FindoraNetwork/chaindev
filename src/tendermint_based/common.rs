@@ -50,10 +50,10 @@ pub trait NodeOptsGenerator<Node>:
 
 // global shared paths should not be used to avoid confusion
 // when multiple users share a same physical machine
-pub(crate) static GLOBAL_BASE_DIR: Lazy<String> = Lazy::new(|| {
+pub(crate) static BASE_DIR: Lazy<String> = Lazy::new(|| {
     let ret = env::var("CHAIN_DEV_GLOBAL_BASE_DIR").unwrap_or_else(|_| {
         format!(
-            "/tmp/__CHAIN_DEV__/{}/{}/__D_DEV__",
+            "/tmp/__CHAIN_DEV__/{}/{}",
             unistd::gethostname().unwrap().into_string().unwrap(),
             unistd::User::from_uid(unistd::getuid())
                 .unwrap()
