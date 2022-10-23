@@ -41,8 +41,10 @@ pub trait NodePorts:
 pub trait NodeOptsGenerator<N, E>:
     Clone + fmt::Debug + Default + Send + Sync + Serialize + for<'a> Deserialize<'a>
 {
-    fn app_opts(&self, node: &N, env_meta: &E) -> String;
-    fn tendermint_opts(&self, node: &N, env_meta: &E) -> String;
+    /// return: (Environment VAR definations, command line options)
+    fn app_opts(&self, node: &N, env_meta: &E) -> (String, String);
+    /// return: (Environment VAR definations, command line options)
+    fn tendermint_opts(&self, node: &N, env_meta: &E) -> (String, String);
 }
 
 pub trait CustomOp<E>:

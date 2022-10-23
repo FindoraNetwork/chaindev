@@ -832,13 +832,15 @@ impl<P: NodePorts> Node<P> {
         self.stop().c(d!())?;
         match unsafe { unistd::fork() } {
             Ok(ForkResult::Child) => {
+                let (tmvars, tmopts) =
+                    env.node_opts_generator.tendermint_opts(self, &env.meta);
+                let (appvars, appopts) =
+                    env.node_opts_generator.app_opts(self, &env.meta);
                 let cmd = format!(
-                    "nohup {tmbin} {tmopts} >{home}/tendermint.log 2>&1 & \
-                     nohup {appbin} {appopts} >{home}/app.log 2>&1 &",
+                    "{tmvars} {tmbin} {tmopts} >{home}/tendermint.log 2>&1 & \
+                     {appvars} {appbin} {appopts} >{home}/app.log 2>&1 &",
                     tmbin = env.meta.tendermint_bin,
-                    tmopts = env.node_opts_generator.tendermint_opts(self, &env.meta),
                     appbin = env.meta.app_bin,
-                    appopts = env.node_opts_generator.app_opts(self, &env.meta),
                     home = &self.home,
                 );
                 pnk!(self.write_dev_log(&cmd));
