@@ -1,14 +1,17 @@
-use super::{
-    host::{Host, HostAddr, HostMeta, HostOS},
-    Env, Node, NodeOptsGenerator, NodePorts,
+use crate::{
+    check_errlist,
+    tendermint_based::ddev::{
+        host::{Host, HostAddr, HostMeta, HostOS},
+        Env, EnvMeta, Node, NodeOptsGenerator, NodePorts,
+    },
 };
-use crate::check_errlist;
 use ruc::{ssh, *};
+use serde::{Deserialize, Serialize};
 use std::{
     collections::{BTreeMap, BTreeSet},
     path::{Path, PathBuf},
 };
-use std::{fs, sync::Mutex, thread};
+use std::{fmt, fs, sync::Mutex, thread};
 
 pub(super) struct Remote<'a> {
     inner: ssh::RemoteHost<'a>,
@@ -273,10 +276,15 @@ pub(super) fn exec_cmds_on_hosts(
     }
 }
 
-pub(super) fn collect_logs_from_nodes<P: NodePorts, S: NodeOptsGenerator<Node<P>>>(
-    env: &Env<P, S>,
+pub(super) fn collect_logs_from_nodes<C, P, S>(
+    env: &Env<C, P, S>,
     local_base_dir: Option<&str>,
-) -> Result<()> {
+) -> Result<()>
+where
+    C: Send + Sync + fmt::Debug + Clone + Serialize + for<'a> Deserialize<'a>,
+    P: NodePorts,
+    S: NodeOptsGenerator<Node<P>, EnvMeta<C, Node<P>>>,
+{
     let local_base_dir = if let Some(lbd) = local_base_dir {
         lbd
     } else {
@@ -284,9 +292,10 @@ pub(super) fn collect_logs_from_nodes<P: NodePorts, S: NodeOptsGenerator<Node<P>
     };
 
     let errlist = thread::scope(|s| {
-        env.nodes
+        env.meta
+            .nodes
             .values()
-            .chain(env.seeds.values())
+            .chain(env.meta.seeds.values())
             .flat_map(|n| {
                 ["app.log", "tendermint.log", "mgmt.log"].iter().map(|log| {
                     (

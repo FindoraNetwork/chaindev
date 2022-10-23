@@ -9,7 +9,7 @@ use std::{env, fmt, fs};
 
 /// Allocate ports based on this trait
 pub trait NodePorts:
-    Clone + Default + Send + Sync + Serialize + for<'a> Deserialize<'a>
+    Clone + fmt::Debug + Default + Send + Sync + Serialize + for<'a> Deserialize<'a>
 {
     /// Reserved ports defined both by the Tendermint and the APP
     fn reserved() -> Vec<u16> {
@@ -38,12 +38,23 @@ pub trait NodePorts:
     fn get_sys_abci(&self) -> u16;
 }
 
-pub trait NodeOptsGenerator<Node>:
-    Clone + Default + Send + Sync + Serialize + for<'a> Deserialize<'a>
+pub trait NodeOptsGenerator<N, E>:
+    Clone + fmt::Debug + Default + Send + Sync + Serialize + for<'a> Deserialize<'a>
 {
-    fn app_opts(&self, n: &Node, extra: &str) -> String;
-    fn tendermint_opts(&self, n: &Node, extra: &str) -> String;
+    fn app_opts(&self, node: &N, env_meta: &E) -> String;
+    fn tendermint_opts(&self, node: &N, env_meta: &E) -> String;
 }
+
+pub trait CustomOp<E>:
+    Clone + fmt::Debug + Default + Send + Sync + Serialize + for<'a> Deserialize<'a>
+{
+    #[allow(unused_variables)]
+    fn exec(&self, env_meta: &E) -> Result<()> {
+        Ok(())
+    }
+}
+
+impl<T> CustomOp<T> for () {}
 
 ///////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////
@@ -75,7 +86,7 @@ pub(crate) const PRESET_POWER: u32 = 1_000_000_000;
 pub(crate) const MB: i64 = 1024 * 1024;
 pub(crate) const GB: i64 = 1024 * MB;
 
-pub(crate) type NodeId = u32;
+pub type NodeId = u32;
 
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct EnvName {

@@ -12,8 +12,8 @@ use remote::Remote;
 use ruc::{cmd, *};
 use serde::{Deserialize, Serialize};
 use serde_json::Value as JsonValue;
-use std::{collections::BTreeMap, fs, io::ErrorKind, path::PathBuf, thread};
-use tendermint::{validator::Info as TmValidator, vote::Power as TmPower};
+use std::{collections::BTreeMap, fmt, fs, io::ErrorKind, path::PathBuf, thread};
+use tendermint::{validator::Info as TmValidator, vote::Power as TmPower, Genesis};
 use tendermint_config::{
     NodeKey, PrivValidatorKey as TmValidatorKey, TendermintConfig as TmConfig,
 };
@@ -42,52 +42,65 @@ macro_rules! check_errlist {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct EnvCfg {
+#[serde(bound = "")]
+pub struct EnvCfg<A, C, P, U>
+where
+    A: fmt::Debug + Clone + Serialize + for<'a> Deserialize<'a>,
+    C: Send + Sync + fmt::Debug + Clone + Serialize + for<'a> Deserialize<'a>,
+    P: NodePorts,
+    U: CustomOp<EnvMeta<C, Node<P>>>,
+{
     /// The name of this env
     pub name: EnvName,
 
     /// Which operation to trigger/call
-    pub op: Op,
+    pub op: Op<A, C, P, U>,
 }
 
-impl EnvCfg {
-    pub fn exec<P: NodePorts, S: NodeOptsGenerator<Node<P>>>(
-        &self,
-        s: S,
-    ) -> Result<Option<Env<P, S>>> {
+impl<A, C, P, U> EnvCfg<A, C, P, U>
+where
+    A: fmt::Debug + Clone + Serialize + for<'a> Deserialize<'a>,
+    C: Send + Sync + fmt::Debug + Clone + Serialize + for<'a> Deserialize<'a>,
+    P: NodePorts,
+    U: CustomOp<EnvMeta<C, Node<P>>>,
+{
+    pub fn exec<S>(&self, s: S) -> Result<Option<Env<C, P, S>>>
+    where
+        S: NodeOptsGenerator<Node<P>, EnvMeta<C, Node<P>>>,
+    {
         match &self.op {
             Op::Create(envopts) => {
-                Env::<P, S>::create(self, envopts, s).c(d!()).map(Some)
+                Env::<C, P, S>::create(self, envopts, s).c(d!()).map(Some)
             }
-            Op::Destroy => Env::<P, S>::load_cfg(self)
+            Op::Destroy => Env::<C, P, S>::load_env_by_cfg(self)
                 .c(d!())
                 .and_then(|env| env.destroy().c(d!()))
                 .map(|_| None),
-            Op::DestroyAll => Env::<P, S>::destroy_all().c(d!()).map(|_| None),
-            Op::Start => Env::<P, S>::load_cfg(self)
+            Op::DestroyAll => Env::<C, P, S>::destroy_all().c(d!()).map(|_| None),
+            Op::Start => Env::<C, P, S>::load_env_by_cfg(self)
                 .c(d!())
                 .and_then(|mut env| env.start(None).c(d!()))
                 .map(|_| None),
-            Op::StartAll => Env::<P, S>::start_all().c(d!()).map(|_| None),
-            Op::Stop => Env::<P, S>::load_cfg(self)
+            Op::StartAll => Env::<C, P, S>::start_all().c(d!()).map(|_| None),
+            Op::Stop => Env::<C, P, S>::load_env_by_cfg(self)
                 .c(d!())
                 .and_then(|env| env.stop().c(d!()))
                 .map(|_| None),
-            Op::StopAll => Env::<P, S>::stop_all().c(d!()).map(|_| None),
-            Op::PushNode => Env::<P, S>::load_cfg(self)
+            Op::StopAll => Env::<C, P, S>::stop_all().c(d!()).map(|_| None),
+            Op::PushNode => Env::<C, P, S>::load_env_by_cfg(self)
                 .c(d!())
                 .and_then(|mut env| env.push_node().c(d!()))
                 .map(|_| None),
-            Op::PopNode => Env::<P, S>::load_cfg(self)
+            Op::PopNode => Env::<C, P, S>::load_env_by_cfg(self)
                 .c(d!())
                 .and_then(|mut env| env.kick_node().c(d!()))
                 .map(|_| None),
-            Op::Show => Env::<P, S>::load_cfg(self).c(d!()).map(|env| {
+            Op::Show => Env::<C, P, S>::load_env_by_cfg(self).c(d!()).map(|env| {
                 env.show();
                 None
             }),
-            Op::ShowAll => Env::<P, S>::show_all().c(d!()).map(|_| None),
-            Op::List => Env::<P, S>::list_all().c(d!()).map(|_| None),
+            Op::ShowAll => Env::<C, P, S>::show_all().c(d!()).map(|_| None),
+            Op::List => Env::<C, P, S>::list_all().c(d!()).map(|_| None),
             Op::HostPutFile {
                 local_path,
                 remote_path,
@@ -101,10 +114,15 @@ impl EnvCfg {
                     )
                     .c(d!())?;
                 } else {
-                    Env::<P, S>::load_cfg(self).c(d!()).and_then(|env| {
-                        env.hosts_put_file(local_path.as_str(), remote_path.as_deref())
+                    Env::<C, P, S>::load_env_by_cfg(self)
+                        .c(d!())
+                        .and_then(|env| {
+                            env.hosts_put_file(
+                                local_path.as_str(),
+                                remote_path.as_deref(),
+                            )
                             .c(d!())
-                    })?;
+                        })?;
                 }
                 Ok(None)
             }
@@ -121,13 +139,15 @@ impl EnvCfg {
                     )
                     .c(d!())?;
                 } else {
-                    Env::<P, S>::load_cfg(self).c(d!()).and_then(|env| {
-                        env.hosts_get_file(
-                            remote_path.as_str(),
-                            local_base_dir.as_deref(),
-                        )
+                    Env::<C, P, S>::load_env_by_cfg(self)
                         .c(d!())
-                    })?;
+                        .and_then(|env| {
+                            env.hosts_get_file(
+                                remote_path.as_str(),
+                                local_base_dir.as_deref(),
+                            )
+                            .c(d!())
+                        })?;
                 }
                 Ok(None)
             }
@@ -144,81 +164,156 @@ impl EnvCfg {
                     )
                     .c(d!())?;
                 } else {
-                    Env::<P, S>::load_cfg(self).c(d!()).and_then(|env| {
-                        env.hosts_exec(cmd.as_deref(), script_path.as_deref())
-                            .c(d!())
-                    })?;
+                    Env::<C, P, S>::load_env_by_cfg(self)
+                        .c(d!())
+                        .and_then(|env| {
+                            env.hosts_exec(cmd.as_deref(), script_path.as_deref())
+                                .c(d!())
+                        })?;
                 }
                 Ok(None)
             }
-            Op::NodeCollectLogs { local_base_dir } => Env::<P, S>::load_cfg(self)
+            Op::NodeCollectLogs { local_base_dir } => {
+                Env::<C, P, S>::load_env_by_cfg(self)
+                    .c(d!())
+                    .and_then(|env| {
+                        env.nodes_collect_logs(local_base_dir.as_deref()).c(d!())
+                    })
+                    .map(|_| None)
+            }
+            Op::Custom(custom_op) => Env::<C, P, S>::load_env_by_cfg(self)
                 .c(d!())
-                .and_then(|env| {
-                    env.nodes_collect_logs(local_base_dir.as_deref()).c(d!())
-                })
+                .and_then(|env| custom_op.exec(&env.meta).c(d!()))
                 .map(|_| None),
+            Op::Nil(_) => unreachable!(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(bound = "")]
+pub struct EnvMeta<C, N>
+where
+    C: Send + Sync + fmt::Debug + Clone + Serialize + for<'a> Deserialize<'a>,
+    N: fmt::Debug + Clone + Serialize + for<'a> Deserialize<'a>,
+{
+    /// the name of this env
+    #[serde(flatten)]
+    pub name: EnvName,
+
+    /// data path of this env
+    #[serde(rename = "env_home_dir")]
+    pub home: String,
+
+    #[serde(rename = "remote_hosts")]
+    hosts: BTreeMap<HostAddr, Host>,
+
+    #[serde(rename = "app_bin_path")]
+    pub app_bin: String,
+
+    pub app_extra_opts: String,
+
+    #[serde(rename = "tendermint_bin_path")]
+    pub tendermint_bin: String,
+
+    pub tendermint_extra_opts: String,
+
+    /// seconds between two blocks
+    #[serde(rename = "block_interval_in_seconds")]
+    pub block_itv_secs: u8,
+
+    #[serde(rename = "seed_nodes")]
+    pub seeds: BTreeMap<NodeId, N>,
+
+    #[serde(rename = "validator_or_full_nodes")]
+    pub nodes: BTreeMap<NodeId, N>,
+
+    /// the contents of `genesis.json` of all nodes
+    #[serde(rename = "tendermint_genesis")]
+    pub genesis: Option<Genesis>,
+
+    pub custom_data: C,
+
+    // the latest/max id of current nodes
+    pub(crate) next_node_id: NodeId,
+}
+
+impl<C, P> EnvMeta<C, Node<P>>
+where
+    C: Send + Sync + fmt::Debug + Clone + Serialize + for<'a> Deserialize<'a>,
+    P: NodePorts,
+{
+    pub fn get_env_list() -> Result<Vec<EnvName>> {
+        let mut list = vec![];
+
+        let data_dir = format!("{}/envs", &*GLOBAL_BASE_DIR);
+        fs::create_dir_all(&data_dir).c(d!())?;
+
+        for entry in fs::read_dir(&data_dir).c(d!())? {
+            let entry = entry.c(d!())?;
+            let path = entry.path();
+            if path.is_dir() {
+                let env = path.file_name().c(d!())?.to_string_lossy().into_owned();
+                list.push(env.into());
+            }
+        }
+
+        list.sort();
+
+        Ok(list)
+    }
+
+    pub fn load_env_by_name<S>(cfg_name: &EnvName) -> Result<Option<Env<C, P, S>>>
+    where
+        S: NodeOptsGenerator<Node<P>, EnvMeta<C, Node<P>>>,
+    {
+        let p = format!("{}/envs/{}/config.json", &*GLOBAL_BASE_DIR, cfg_name);
+        match fs::read_to_string(&p) {
+            Ok(d) => Ok(serde_json::from_str(&d).c(d!())?),
+            Err(e) => match e.kind() {
+                ErrorKind::NotFound => Ok(None),
+                _ => Err(eg!(e)),
+            },
         }
     }
 }
 
 #[derive(Clone, Deserialize, Serialize)]
 #[serde(bound = "")]
-pub struct Env<P: NodePorts, S: NodeOptsGenerator<Node<P>>> {
-    // the name of this env
-    #[serde(flatten)]
-    name: EnvName,
-
-    // data path of this env
-    #[serde(rename = "env_home_dir")]
-    home: String,
-
-    #[serde(rename = "remote_hosts")]
-    hosts: BTreeMap<HostAddr, Host>,
-
-    #[serde(rename = "app_bin_path")]
-    app_bin: String,
-
-    #[serde(rename = "app_extra_options")]
-    app_extra_opts: String,
-
-    #[serde(rename = "tendermint_bin_path")]
-    tendermint_bin: String,
-
-    #[serde(rename = "tendermint_extra_options")]
-    tendermint_extra_opts: String,
-
-    // seconds between two blocks
-    #[serde(rename = "block_interval_in_seconds")]
-    block_itv_secs: u8,
-
-    #[serde(rename = "seed_nodes")]
-    seeds: BTreeMap<NodeId, Node<P>>,
-
-    #[serde(rename = "validator_or_full_nodes")]
-    nodes: BTreeMap<NodeId, Node<P>>,
-
-    // the latest/max id of current nodes
-    next_node_id: NodeId,
-
-    // the contents of `genesis.json` of all nodes
-    #[serde(rename = "tendermint_genesis")]
-    genesis: String,
+pub struct Env<C, P, S>
+where
+    C: Send + Sync + fmt::Debug + Clone + Serialize + for<'a> Deserialize<'a>,
+    P: NodePorts,
+    S: NodeOptsGenerator<Node<P>, EnvMeta<C, Node<P>>>,
+{
+    pub meta: EnvMeta<C, Node<P>>,
 
     #[serde(rename = "node_options_generator")]
-    node_opts_generator: S,
-
-    custom_information: JsonValue,
+    pub node_opts_generator: S,
 }
 
-impl<P: NodePorts, S: NodeOptsGenerator<Node<P>>> Env<P, S> {
+impl<C, P, S> Env<C, P, S>
+where
+    C: Send + Sync + fmt::Debug + Clone + Serialize + for<'a> Deserialize<'a>,
+    P: NodePorts,
+    S: NodeOptsGenerator<Node<P>, EnvMeta<C, Node<P>>>,
+{
     // - initilize a new env
     // - `genesis.json` will be created
-    fn create(cfg: &EnvCfg, opts: &EnvOpts, s: S) -> Result<Env<P, S>> {
+    fn create<A, U>(
+        cfg: &EnvCfg<A, C, P, U>,
+        opts: &EnvOpts<A, C>,
+        s: S,
+    ) -> Result<Env<C, P, S>>
+    where
+        A: fmt::Debug + Clone + Serialize + for<'a> Deserialize<'a>,
+        U: CustomOp<EnvMeta<C, Node<P>>>,
+    {
         let home = format!("{}/envs/{}", &*GLOBAL_BASE_DIR, &cfg.name);
 
         if opts.force_create {
             omit!(
-                Env::<P, S>::load_cfg(cfg)
+                Env::<C, P, S>::load_env_by_cfg(cfg)
                     .c(d!())
                     .and_then(|env| env.destroy().c(d!()))
             );
@@ -262,29 +357,32 @@ impl<P: NodePorts, S: NodeOptsGenerator<Node<P>>> Env<P, S> {
         }
 
         let mut env = Env {
-            name: cfg.name.clone(),
-            home,
-            hosts: opts.hosts.clone(),
-            app_bin: opts.app_bin_path.clone(),
-            app_extra_opts: opts.app_extra_opts.clone(),
-            tendermint_bin: opts.tendermint_bin_path.clone(),
-            tendermint_extra_opts: opts.tendermint_extra_opts.clone(),
-            block_itv_secs: opts.block_itv_secs,
-            nodes: Default::default(),
-            seeds: Default::default(),
-            next_node_id: Default::default(),
-            genesis: Default::default(),
+            meta: EnvMeta {
+                name: cfg.name.clone(),
+                home,
+                hosts: opts.hosts.clone(),
+                app_bin: opts.app_bin_path.clone(),
+                app_extra_opts: opts.app_extra_opts.clone(),
+                tendermint_bin: opts.tendermint_bin_path.clone(),
+                tendermint_extra_opts: opts.tendermint_extra_opts.clone(),
+                block_itv_secs: opts.block_itv_secs,
+                nodes: Default::default(),
+                seeds: Default::default(),
+                genesis: None,
+                custom_data: opts.custom_data.clone(),
+                next_node_id: Default::default(),
+            },
             node_opts_generator: s,
-            custom_information: opts.custom_information.clone(),
         };
 
-        fs::create_dir_all(&env.home).c(d!()).and_then(|_| {
+        fs::create_dir_all(&env.meta.home).c(d!()).and_then(|_| {
             let errlist = thread::scope(|s| {
-                env.hosts
+                env.meta
+                    .hosts
                     .values()
                     .map(|h| {
                         let remote = Remote::from(h);
-                        let cmd = format!("mkdir -p {}", &env.home);
+                        let cmd = format!("mkdir -p {}", &env.meta.home);
                         s.spawn(move || info!(remote.exec_cmd(&cmd), &h.meta.addr))
                     })
                     .collect::<Vec<_>>()
@@ -317,9 +415,10 @@ impl<P: NodePorts, S: NodeOptsGenerator<Node<P>>> Env<P, S> {
     // start one or all nodes
     fn start(&mut self, n: Option<NodeId>) -> Result<()> {
         let ids = n.map(|id| vec![id]).unwrap_or_else(|| {
-            self.seeds
+            self.meta
+                .seeds
                 .keys()
-                .chain(self.nodes.keys())
+                .chain(self.meta.nodes.keys())
                 .copied()
                 .collect()
         });
@@ -332,24 +431,10 @@ impl<P: NodePorts, S: NodeOptsGenerator<Node<P>>> Env<P, S> {
             let mut hdrs = vec![];
             for i in ids.iter() {
                 let hdr = s.spawn(|| {
-                    if let Some(n) = self.nodes.get(i) {
-                        n.start(
-                            &self.app_bin,
-                            &self.app_extra_opts,
-                            &self.tendermint_bin,
-                            &self.tendermint_extra_opts,
-                            &self.node_opts_generator,
-                        )
-                        .c(d!())
-                    } else if let Some(n) = self.seeds.get(i) {
-                        n.start(
-                            &self.app_bin,
-                            &self.app_extra_opts,
-                            &self.tendermint_bin,
-                            &self.tendermint_extra_opts,
-                            &self.node_opts_generator,
-                        )
-                        .c(d!())
+                    if let Some(n) = self.meta.nodes.get(i) {
+                        n.start(self).c(d!())
+                    } else if let Some(n) = self.meta.seeds.get(i) {
+                        n.start(self).c(d!())
                     } else {
                         Err(eg!("not exist"))
                     }
@@ -367,8 +452,8 @@ impl<P: NodePorts, S: NodeOptsGenerator<Node<P>>> Env<P, S> {
 
     // start all existing ENVs
     fn start_all() -> Result<()> {
-        for env in Self::get_all_envs().c(d!())?.iter() {
-            Self::read_cfg(env)
+        for env in Self::get_env_list().c(d!())?.iter() {
+            Self::load_env_by_name(env)
                 .c(d!())?
                 .c(d!("BUG: env not found!"))?
                 .start(None)
@@ -381,9 +466,10 @@ impl<P: NodePorts, S: NodeOptsGenerator<Node<P>>> Env<P, S> {
     // - release all occupied ports
     fn stop(&self) -> Result<()> {
         let errlist = thread::scope(|s| {
-            self.nodes
+            self.meta
+                .nodes
                 .values()
-                .chain(self.seeds.values())
+                .chain(self.meta.seeds.values())
                 .map(|n| s.spawn(|| info!(n.stop(), &n.host.addr)))
                 .collect::<Vec<_>>()
                 .into_iter()
@@ -397,8 +483,8 @@ impl<P: NodePorts, S: NodeOptsGenerator<Node<P>>> Env<P, S> {
 
     // stop all existing ENVs
     fn stop_all() -> Result<()> {
-        for env in Self::get_all_envs().c(d!())?.iter() {
-            Self::read_cfg(env)
+        for env in Self::get_env_list().c(d!())?.iter() {
+            Self::load_env_by_name(env)
                 .c(d!())?
                 .c(d!("BUG: env not found!"))?
                 .stop()
@@ -416,9 +502,10 @@ impl<P: NodePorts, S: NodeOptsGenerator<Node<P>>> Env<P, S> {
         sleep_ms!(10);
 
         let errlist = thread::scope(|s| {
-            self.seeds
+            self.meta
+                .seeds
                 .values()
-                .chain(self.nodes.values())
+                .chain(self.meta.nodes.values())
                 .map(|n| s.spawn(|| n.clean().c(d!())))
                 .collect::<Vec<_>>()
                 .into_iter()
@@ -429,15 +516,16 @@ impl<P: NodePorts, S: NodeOptsGenerator<Node<P>>> Env<P, S> {
 
         check_errlist!(@errlist);
 
-        fs::remove_dir_all(&self.home).c(d!())?;
+        fs::remove_dir_all(&self.meta.home).c(d!())?;
 
         let errlist = thread::scope(|s| {
-            self.hosts
+            self.meta
+                .hosts
                 .values()
                 .map(|h| {
                     s.spawn(move || {
                         let remote = Remote::from(h);
-                        let cmd = format!("rm -rf {}", &self.home);
+                        let cmd = format!("rm -rf {}", &self.meta.home);
                         info!(remote.exec_cmd(&cmd), &h.meta.addr)
                     })
                 })
@@ -454,10 +542,12 @@ impl<P: NodePorts, S: NodeOptsGenerator<Node<P>>> Env<P, S> {
     // destroy all existing ENVs
     fn destroy_all() -> Result<()> {
         let mut hosts = BTreeMap::new();
-        for env in Self::get_all_envs().c(d!())?.iter() {
-            let mut env = Self::read_cfg(env).c(d!())?.c(d!("BUG: env not found!"))?;
+        for env in Self::get_env_list().c(d!())?.iter() {
+            let mut env = Self::load_env_by_name(env)
+                .c(d!())?
+                .c(d!("BUG: env not found!"))?;
             env.destroy().c(d!())?;
-            hosts.append(&mut env.hosts);
+            hosts.append(&mut env.meta.hosts);
         }
         fs::remove_dir_all(&*GLOBAL_BASE_DIR)
             .c(d!())
@@ -487,16 +577,17 @@ impl<P: NodePorts, S: NodeOptsGenerator<Node<P>>> Env<P, S> {
 
     // seed nodes and the first fullnode can not be removed.
     fn kick_node(&mut self) -> Result<()> {
-        self.nodes
+        self.meta
+            .nodes
             .keys()
             .skip(1)
             .rev()
             .copied()
             .next()
             .c(d!("at least one Full Node should be kept!"))
-            .and_then(|k| self.nodes.remove(&k).c(d!()))
+            .and_then(|k| self.meta.nodes.remove(&k).c(d!()))
             .and_then(|n| {
-                self.hosts.get_mut(&n.host.addr).unwrap().node_cnt -= 1;
+                self.meta.hosts.get_mut(&n.host.addr).unwrap().node_cnt -= 1;
                 n.stop().c(d!()).and_then(|_| n.clean().c(d!()))
             })
             .and_then(|_| self.write_cfg().c(d!()))
@@ -508,9 +599,9 @@ impl<P: NodePorts, S: NodeOptsGenerator<Node<P>>> Env<P, S> {
 
     // show the details of all existing ENVs
     fn show_all() -> Result<()> {
-        for (idx, env) in Self::get_all_envs().c(d!())?.iter().enumerate() {
+        for (idx, env) in Self::get_env_list().c(d!())?.iter().enumerate() {
             println!("\x1b[31;01m====== ENV No.{} ======\x1b[00m", idx);
-            Self::read_cfg(env)
+            Self::load_env_by_name(env)
                 .c(d!())?
                 .c(d!("BUG: env not found!"))?
                 .show();
@@ -521,7 +612,7 @@ impl<P: NodePorts, S: NodeOptsGenerator<Node<P>>> Env<P, S> {
 
     // list the names of all existing ENVs
     fn list_all() -> Result<()> {
-        let list = Self::get_all_envs().c(d!())?;
+        let list = Self::get_env_list().c(d!())?;
 
         if list.is_empty() {
             eprintln!("\x1b[31;01mNo existing env!\x1b[00m");
@@ -537,7 +628,7 @@ impl<P: NodePorts, S: NodeOptsGenerator<Node<P>>> Env<P, S> {
 
     #[inline(always)]
     fn hosts_put_file(&self, local_path: &str, remote_path: Option<&str>) -> Result<()> {
-        remote::put_file_to_hosts(&self.hosts, local_path, remote_path).c(d!())
+        remote::put_file_to_hosts(&self.meta.hosts, local_path, remote_path).c(d!())
     }
 
     #[inline(always)]
@@ -546,12 +637,13 @@ impl<P: NodePorts, S: NodeOptsGenerator<Node<P>>> Env<P, S> {
         remote_path: &str,
         local_base_dir: Option<&str>,
     ) -> Result<()> {
-        remote::get_file_from_hosts(&self.hosts, remote_path, local_base_dir).c(d!())
+        remote::get_file_from_hosts(&self.meta.hosts, remote_path, local_base_dir)
+            .c(d!())
     }
 
     #[inline(always)]
     fn hosts_exec(&self, cmd: Option<&str>, script_path: Option<&str>) -> Result<()> {
-        remote::exec_cmds_on_hosts(&self.hosts, cmd, script_path).c(d!())
+        remote::exec_cmds_on_hosts(&self.meta.hosts, cmd, script_path).c(d!())
     }
 
     #[inline(always)]
@@ -569,7 +661,7 @@ impl<P: NodePorts, S: NodeOptsGenerator<Node<P>>> Env<P, S> {
         let remote = Remote::from(&host);
 
         // 2.
-        let home = format!("{}/{}", self.home, id);
+        let home = format!("{}/{}", self.meta.home, id);
         remote.exec_cmd(&format!("mkdir -p {}", &home)).c(d!())?;
 
         let cfgfile = format!("{}/config/config.toml", &home);
@@ -580,7 +672,7 @@ impl<P: NodePorts, S: NodeOptsGenerator<Node<P>>> Env<P, S> {
 
         let cmd = format!(
             "{} init {} --home {}",
-            &self.tendermint_bin, role_mark, &home
+            &self.meta.tendermint_bin, role_mark, &home
         );
         let mut cfg = remote
             .exec_cmd(&cmd)
@@ -598,8 +690,11 @@ impl<P: NodePorts, S: NodeOptsGenerator<Node<P>>> Env<P, S> {
                 // A '@'-prefix is necessary for tendermint(written in go) to distinguish its type
                 #[cfg(feature = "unix_abstract_socket")]
                 {
-                    cfg["rpc"]["laddr"] =
-                        toml_value(format!("unix://@{}{}", random::<u64>(), &self.name));
+                    cfg["rpc"]["laddr"] = toml_value(format!(
+                        "unix://@{}{}",
+                        random::<u64>(),
+                        &self.meta.name
+                    ));
                 }
                 #[cfg(not(feature = "unix_abstract_socket"))]
                 {
@@ -632,14 +727,14 @@ impl<P: NodePorts, S: NodeOptsGenerator<Node<P>>> Env<P, S> {
         cfg["consensus"]["timeout_precommit"] = toml_value("2s");
         cfg["consensus"]["timeout_precommit_delta"] = toml_value("100ms");
         cfg["consensus"]["timeout_commit"] =
-            toml_value(self.block_itv_secs.to_string() + "s");
+            toml_value(self.meta.block_itv_secs.to_string() + "s");
         cfg["consensus"]["skip_timeout_commit"] = toml_value(false);
         cfg["consensus"]["create_empty_blocks"] = toml_value(false);
         cfg["consensus"]["create_empty_blocks_interval"] = toml_value("30s");
 
         cfg["mempool"]["recheck"] = toml_value(false);
 
-        cfg["moniker"] = toml_value(format!("{}-{}", &self.name, id));
+        cfg["moniker"] = toml_value(format!("{}-{}", &self.meta.name, id));
 
         match kind {
             Kind::Node => {
@@ -682,15 +777,15 @@ impl<P: NodePorts, S: NodeOptsGenerator<Node<P>>> Env<P, S> {
         let node = Node {
             id,
             tm_id,
-            home: format!("{}/{}", &self.home, id),
+            home: format!("{}/{}", &self.meta.home, id),
             kind,
             host,
             ports,
         };
 
         match kind {
-            Kind::Node => self.nodes.insert(id, node),
-            Kind::Seed => self.seeds.insert(id, node),
+            Kind::Node => self.meta.nodes.insert(id, node),
+            Kind::Seed => self.meta.seeds.insert(id, node),
         };
 
         Ok(())
@@ -699,7 +794,7 @@ impl<P: NodePorts, S: NodeOptsGenerator<Node<P>>> Env<P, S> {
     fn update_peer_cfg(&self) -> Result<()> {
         let errlist = thread::scope(|s| {
             let mut hdrs = vec![];
-            for n in self.nodes.values() {
+            for n in self.meta.nodes.values() {
                 let hdr = s.spawn(|| {
                     let remote = Remote::from(&n.host);
                     let cfgfile = format!("{}/config/config.toml", &n.home);
@@ -708,7 +803,8 @@ impl<P: NodePorts, S: NodeOptsGenerator<Node<P>>> Env<P, S> {
                         .c(d!())
                         .and_then(|c| c.parse::<Document>().c(d!()))?;
                     cfg["p2p"]["seeds"] = toml_value(
-                        self.seeds
+                        self.meta
+                            .seeds
                             .values()
                             .map(|n| {
                                 format!(
@@ -722,7 +818,8 @@ impl<P: NodePorts, S: NodeOptsGenerator<Node<P>>> Env<P, S> {
                             .join(","),
                     );
                     cfg["p2p"]["persistent_peers"] = toml_value(
-                        self.nodes
+                        self.meta
+                            .nodes
                             .values()
                             .filter(|peer| peer.id != n.id)
                             .map(|n| {
@@ -743,7 +840,7 @@ impl<P: NodePorts, S: NodeOptsGenerator<Node<P>>> Env<P, S> {
                 hdrs.push(hdr);
             }
 
-            for n in self.seeds.values() {
+            for n in self.meta.seeds.values() {
                 let hdr = s.spawn(|| {
                     let remote = Remote::from(&n.host);
                     let cfgfile = format!("{}/config/config.toml", &n.home);
@@ -752,7 +849,8 @@ impl<P: NodePorts, S: NodeOptsGenerator<Node<P>>> Env<P, S> {
                         .c(d!())
                         .and_then(|c| c.parse::<Document>().c(d!()))?;
                     cfg["p2p"]["persistent_peers"] = toml_value(
-                        self.nodes
+                        self.meta
+                            .nodes
                             .values()
                             .filter(|peer| peer.id != n.id)
                             .map(|n| {
@@ -784,16 +882,19 @@ impl<P: NodePorts, S: NodeOptsGenerator<Node<P>>> Env<P, S> {
 
     // Allocate unique IDs for nodes within the scope of an env
     fn next_node_id(&mut self) -> NodeId {
-        let ret = self.next_node_id;
-        self.next_node_id += 1;
+        let ret = self.meta.next_node_id;
+        self.meta.next_node_id += 1;
         ret
     }
 
     // Generate a new `genesis.json`
     // based on the collection of initial validators.
-    fn gen_genesis(&mut self, app_state: &JsonValue) -> Result<()> {
+    fn gen_genesis<A>(&mut self, app_state: &A) -> Result<()>
+    where
+        A: fmt::Debug + Clone + Serialize + for<'a> Deserialize<'a>,
+    {
         let tmp_id = NodeId::MAX;
-        let tmp_home = format!("{}/{}", &self.home, tmp_id);
+        let tmp_home = format!("{}/{}", &self.meta.home, tmp_id);
 
         let parse = |n: &Node<P>| {
             let cfgfile = format!("{}/config/config.toml", &n.home);
@@ -815,7 +916,8 @@ impl<P: NodePorts, S: NodeOptsGenerator<Node<P>>> Env<P, S> {
         };
         let gen = |genesis_file: String| {
             thread::scope(|s| {
-                self.nodes
+                self.meta
+                    .nodes
                     .values()
                     .map(|n| s.spawn(|| parse(n)))
                     .collect::<Vec<_>>()
@@ -837,9 +939,10 @@ impl<P: NodePorts, S: NodeOptsGenerator<Node<P>>> Env<P, S> {
                 fs::read_to_string(format!("{}/{}", tmp_home, genesis_file))
                     .c(d!())
                     .and_then(|g| serde_json::from_str::<JsonValue>(&g).c(d!()))
-                    .map(|mut g| {
+                    .and_then(|mut g| {
                         g["validators"] = vs;
-                        g["app_state"] = app_state.clone();
+                        g["app_state"] =
+                            serde_json::to_value(app_state.clone()).c(d!())?;
                         g["genesis_time"] = JsonValue::String(
                             // '2022-xxx' --> '1022-xxx'
                             // avoid waiting time between hosts
@@ -847,14 +950,15 @@ impl<P: NodePorts, S: NodeOptsGenerator<Node<P>>> Env<P, S> {
                             // when the chain is starting first time
                             g["genesis_time"].as_str().unwrap().replacen('2', "1", 1),
                         );
-                        self.genesis = g.to_string();
+                        self.meta.genesis = Some(serde_json::from_value(g).c(d!())?);
+                        Ok(())
                     })
             })
         };
 
         cmd::exec_output(&format!(
             "{} init validator --home {}",
-            &self.tendermint_bin, &tmp_home
+            &self.meta.tendermint_bin, &tmp_home
         ))
         .c(d!())
         .and_then(|_| {
@@ -868,9 +972,10 @@ impl<P: NodePorts, S: NodeOptsGenerator<Node<P>>> Env<P, S> {
 
     fn apply_genesis(&self, n: Option<NodeId>) -> Result<()> {
         let nodes = n.map(|id| vec![id]).unwrap_or_else(|| {
-            self.seeds
+            self.meta
+                .seeds
                 .keys()
-                .chain(self.nodes.keys())
+                .chain(self.meta.nodes.keys())
                 .copied()
                 .collect()
         });
@@ -879,7 +984,12 @@ impl<P: NodePorts, S: NodeOptsGenerator<Node<P>>> Env<P, S> {
             let mut hdrs = vec![];
             for n in nodes.iter() {
                 let hdr = s.spawn(|| {
-                    let n = self.nodes.get(n).or_else(|| self.seeds.get(n)).c(d!())?;
+                    let n = self
+                        .meta
+                        .nodes
+                        .get(n)
+                        .or_else(|| self.meta.seeds.get(n))
+                        .c(d!())?;
                     let remote = Remote::from(&n.host);
                     let cfgfile = format!("{}/config/config.toml", &n.home);
                     remote
@@ -888,9 +998,14 @@ impl<P: NodePorts, S: NodeOptsGenerator<Node<P>>> Env<P, S> {
                         .and_then(|c| TmConfig::parse_toml(c).map_err(|e| eg!(e)))
                         .map(|cfg| PathBuf::from(&n.home).join(&cfg.genesis_file))
                         .and_then(|genesis_path| {
-                            remote
-                                .write_file(&genesis_path, self.genesis.as_bytes())
-                                .c(d!())
+                            self.meta
+                                .genesis
+                                .as_ref()
+                                .c(d!("BUG"))
+                                .and_then(|g| serde_json::to_vec_pretty(g).c(d!()))
+                                .and_then(|g| {
+                                    remote.write_file(&genesis_path, &g).c(d!())
+                                })
                         })
                 });
                 hdrs.push(hdr);
@@ -904,57 +1019,43 @@ impl<P: NodePorts, S: NodeOptsGenerator<Node<P>>> Env<P, S> {
         check_errlist!(errlist)
     }
 
-    fn get_all_envs() -> Result<Vec<EnvName>> {
-        let mut list = vec![];
-
-        let data_dir = format!("{}/envs", &*GLOBAL_BASE_DIR);
-        fs::create_dir_all(&data_dir).c(d!())?;
-
-        for entry in fs::read_dir(&data_dir).c(d!())? {
-            let entry = entry.c(d!())?;
-            let path = entry.path();
-            if path.is_dir() {
-                let env = path.file_name().c(d!())?.to_string_lossy().into_owned();
-                list.push(env.into());
-            }
-        }
-
-        list.sort();
-
-        Ok(list)
+    #[inline(always)]
+    pub fn get_env_list() -> Result<Vec<EnvName>> {
+        EnvMeta::<C, Node<P>>::get_env_list().c(d!())
     }
 
-    fn load_cfg(cfg: &EnvCfg) -> Result<Env<P, S>> {
-        Self::read_cfg(&cfg.name).c(d!()).and_then(|env| match env {
-            Some(env) => Ok(env),
-            None => {
-                eprintln!();
-                eprintln!("********************");
-                eprintln!(
-                    "\x1b[01mHINTS: \x1b[33;01mENV({}) NOT FOUND\x1b[00m",
-                    &cfg.name
-                );
-                eprintln!("********************");
-                Err(eg!("ENV({}) NOT FOUND", &cfg.name))
-            }
-        })
-    }
-
-    fn read_cfg(cfg_name: &EnvName) -> Result<Option<Env<P, S>>> {
-        let p = format!("{}/envs/{}/config.json", &*GLOBAL_BASE_DIR, cfg_name);
-        match fs::read_to_string(&p) {
-            Ok(d) => Ok(serde_json::from_str(&d).c(d!())?),
-            Err(e) => match e.kind() {
-                ErrorKind::NotFound => Ok(None),
-                _ => Err(eg!(e)),
-            },
-        }
-    }
-
-    fn write_cfg(&self) -> Result<()> {
-        serde_json::to_vec_pretty(self)
+    fn load_env_by_cfg<A, U>(cfg: &EnvCfg<A, C, P, U>) -> Result<Env<C, P, S>>
+    where
+        A: fmt::Debug + Clone + Serialize + for<'a> Deserialize<'a>,
+        U: CustomOp<EnvMeta<C, Node<P>>>,
+    {
+        Self::load_env_by_name(&cfg.name)
             .c(d!())
-            .and_then(|d| fs::write(format!("{}/config.json", &self.home), d).c(d!()))
+            .and_then(|env| match env {
+                Some(env) => Ok(env),
+                None => {
+                    eprintln!();
+                    eprintln!("********************");
+                    eprintln!(
+                        "\x1b[01mHINTS: \x1b[33;01mENV({}) NOT FOUND\x1b[00m",
+                        &cfg.name
+                    );
+                    eprintln!("********************");
+                    Err(eg!("ENV({}) NOT FOUND", &cfg.name))
+                }
+            })
+    }
+
+    #[inline(always)]
+    pub fn load_env_by_name(cfg_name: &EnvName) -> Result<Option<Env<C, P, S>>> {
+        EnvMeta::<C, Node<P>>::load_env_by_name(cfg_name).c(d!())
+    }
+
+    #[inline(always)]
+    pub fn write_cfg(&self) -> Result<()> {
+        serde_json::to_vec_pretty(self).c(d!()).and_then(|d| {
+            fs::write(format!("{}/config.json", &self.meta.home), d).c(d!())
+        })
     }
 
     // alloc <host,ports> for a new node
@@ -966,6 +1067,7 @@ impl<P: NodePorts, S: NodeOptsGenerator<Node<P>>> Env<P, S> {
 
     fn alloc_host(&mut self, node_kind: &Kind) -> Result<HostMeta> {
         let (max_host, max_weight) = self
+            .meta
             .hosts
             .values()
             .map(|h| (h.meta.clone(), h.weight))
@@ -976,6 +1078,7 @@ impl<P: NodePorts, S: NodeOptsGenerator<Node<P>>> Env<P, S> {
             max_host
         } else {
             let mut seq = self
+                .meta
                 .hosts
                 .values()
                 .map(|h| (h.meta.clone(), (h.node_cnt * max_weight) / h.weight))
@@ -984,7 +1087,7 @@ impl<P: NodePorts, S: NodeOptsGenerator<Node<P>>> Env<P, S> {
             seq.into_iter().next().c(d!()).map(|h| h.0)?
         };
 
-        self.hosts.get_mut(&h.addr).unwrap().node_cnt += 1;
+        self.meta.hosts.get_mut(&h.addr).unwrap().node_cnt += 1;
 
         Ok(h)
     }
@@ -1004,7 +1107,7 @@ impl<P: NodePorts, S: NodeOptsGenerator<Node<P>>> Env<P, S> {
 
         let mut res = vec![];
         if matches!(node_kind, Kind::Node)
-            && ENV_NAME_DEFAULT == self.name.as_ref()
+            && ENV_NAME_DEFAULT == self.meta.name.as_ref()
             && reserved.iter().all(|hp| !PC.contains(hp))
             && reserved_ports.iter().all(|p| port_is_free(p))
         {
@@ -1033,7 +1136,7 @@ impl<P: NodePorts, S: NodeOptsGenerator<Node<P>>> Env<P, S> {
     }
 }
 
-#[derive(Clone, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(bound = "")]
 pub struct Node<P: NodePorts> {
     id: NodeId,
@@ -1047,22 +1150,19 @@ pub struct Node<P: NodePorts> {
 }
 
 impl<P: NodePorts> Node<P> {
-    fn start(
-        &self,
-        app_bin: &str,
-        app_extra_opts: &str,
-        tendermint_bin: &str,
-        tendermint_extra_opts: &str,
-        opts_generator: &impl NodeOptsGenerator<Node<P>>,
-    ) -> Result<()> {
+    fn start<C, S>(&self, env: &Env<C, P, S>) -> Result<()>
+    where
+        C: Send + Sync + fmt::Debug + Clone + Serialize + for<'a> Deserialize<'a>,
+        S: NodeOptsGenerator<Node<P>, EnvMeta<C, Node<P>>>,
+    {
         self.stop().c(d!())?;
         let cmd = format!(
             "nohup {tmbin} {tmopts} >{home}/tendermint.log 2>&1 & \
              nohup {appbin} {appopts} >{home}/app.log 2>&1 &",
-            tmbin = tendermint_bin,
-            tmopts = opts_generator.tendermint_opts(self, tendermint_extra_opts),
-            appbin = app_bin,
-            appopts = opts_generator.app_opts(self, app_extra_opts),
+            tmbin = env.meta.tendermint_bin,
+            tmopts = env.node_opts_generator.tendermint_opts(self, &env.meta),
+            appbin = env.meta.app_bin,
+            appopts = env.node_opts_generator.app_opts(self, &env.meta),
             home = &self.home,
         );
 
@@ -1111,16 +1211,23 @@ impl<P: NodePorts> Node<P> {
     }
 }
 
-#[derive(Clone, Copy, Deserialize, Serialize)]
+#[derive(Copy, Clone, Debug, Deserialize, Serialize)]
 enum Kind {
     #[serde(rename = "ValidatorOrFull")]
     Node,
     Seed,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub enum Op {
-    Create(EnvOpts),
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(bound = "")]
+pub enum Op<A, C, P, U>
+where
+    A: fmt::Debug + Clone + Serialize + for<'a> Deserialize<'a>,
+    C: Send + Sync + fmt::Debug + Clone + Serialize + for<'a> Deserialize<'a>,
+    P: NodePorts,
+    U: CustomOp<EnvMeta<C, Node<P>>>,
+{
+    Create(EnvOpts<A, C>),
     Destroy,
     DestroyAll,
     Start,
@@ -1150,11 +1257,18 @@ pub enum Op {
     NodeCollectLogs {
         local_base_dir: Option<String>,
     },
+    Custom(U),
+    Nil(P),
 }
 
 /// Options specified with the create operation
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct EnvOpts {
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(bound = "")]
+pub struct EnvOpts<A, C>
+where
+    A: fmt::Debug + Clone + Serialize + for<'a> Deserialize<'a>,
+    C: Send + Sync + fmt::Debug + Clone + Serialize + for<'a> Deserialize<'a>,
+{
     /// host list of the env
     pub hosts: BTreeMap<HostAddr, Host>,
 
@@ -1173,8 +1287,8 @@ pub struct EnvOpts {
 
     pub force_create: bool,
 
-    pub app_state: JsonValue,
-    pub custom_information: JsonValue,
+    pub app_state: A,
+    pub custom_data: C,
 }
 
 static PC: Lazy<PortsCache> = Lazy::new(PortsCache::new);
