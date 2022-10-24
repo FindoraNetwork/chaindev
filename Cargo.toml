@@ -23,7 +23,7 @@ tendermint = { git = "https://github.com/rust-util-collections/tendermint-rs", t
 tendermint-config =  { git = "https://github.com/rust-util-collections/tendermint-rs", tag = "v0.25.0-gsc-p3", optional = true }
 
 [features]
-default = ["tendermint_based","unix_abstract_socket"]
+default = ["tendermint_based"]
 substrate_based = []
 tendermint_based = ["tendermint","tendermint-config"]
 unix_abstract_socket = []
