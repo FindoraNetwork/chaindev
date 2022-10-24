@@ -837,8 +837,8 @@ impl<P: NodePorts> Node<P> {
                 let (appvars, appopts) =
                     env.node_opts_generator.app_opts(self, &env.meta);
                 let cmd = format!(
-                    "{tmvars} {tmbin} {tmopts} >{home}/tendermint.log 2>&1 & \
-                     {appvars} {appbin} {appopts} >{home}/app.log 2>&1 &",
+                    "{tmvars} {tmbin} {tmopts} >>{home}/tendermint.log 2>&1 & \
+                     {appvars} {appbin} {appopts} >>{home}/app.log 2>&1 &",
                     tmbin = env.meta.tendermint_bin,
                     appbin = env.meta.app_bin,
                     home = &self.home,
