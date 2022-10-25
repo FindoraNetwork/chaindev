@@ -9,7 +9,7 @@ use std::{env, fmt, fs, str::FromStr};
 
 /// Allocate ports based on this trait
 pub trait NodePorts:
-    Clone + fmt::Debug + Default + Send + Sync + Serialize + for<'a> Deserialize<'a>
+    Clone + fmt::Debug + Send + Sync + Serialize + for<'a> Deserialize<'a>
 {
     /// Reserved ports defined both by the Tendermint and the APP
     fn reserved() -> Vec<u16> {
@@ -26,10 +26,10 @@ pub trait NodePorts:
     }
     /// Reserved ports defined by the APP
     fn app_reserved() -> Vec<u16>;
-    /// Set actual ports to the instance
-    fn set_all_ports(&mut self, ports: &[u16]);
+    /// Set all actual ports to the instance
+    fn try_create(ports: &[u16]) -> Result<Self>;
     /// Get actual ports from the instance
-    fn get_all_ports(&self) -> Vec<u16>;
+    fn get_port_list(&self) -> Vec<u16>;
     /// The p2p listening port in the Tendermint side
     fn get_sys_p2p(&self) -> u16;
     /// The rpc listening port in the Tendermint side
@@ -39,7 +39,7 @@ pub trait NodePorts:
 }
 
 pub trait NodeOptsGenerator<N, E>:
-    Clone + fmt::Debug + Default + Send + Sync + Serialize + for<'a> Deserialize<'a>
+    Clone + fmt::Debug + Send + Sync + Serialize + for<'a> Deserialize<'a>
 {
     /// return: (Environment VAR definations, command line options)
     fn app_opts(&self, node: &N, env_meta: &E) -> (String, String);
@@ -48,7 +48,7 @@ pub trait NodeOptsGenerator<N, E>:
 }
 
 pub trait CustomOp<E>:
-    Clone + fmt::Debug + Default + Send + Sync + Serialize + for<'a> Deserialize<'a>
+    Clone + fmt::Debug + Send + Sync + Serialize + for<'a> Deserialize<'a>
 {
     #[allow(unused_variables)]
     fn exec(&self, env_meta: &E) -> Result<()> {

@@ -1099,8 +1099,6 @@ where
     }
 
     fn alloc_ports(&self, node_kind: &Kind, host: &HostMeta) -> Result<P> {
-        let mut ports = P::default();
-
         let reserved_ports = P::reserved();
         let reserved = reserved_ports
             .iter()
@@ -1136,9 +1134,8 @@ where
                 .map(|p| format!("{},{}", &host.addr, p))
                 .collect::<Vec<_>>(),
         );
-        ports.set_all_ports(&res);
 
-        Ok(ports)
+        P::try_create(&res).c(d!())
     }
 }
 
@@ -1206,7 +1203,7 @@ impl<P: NodePorts> Node<P> {
     // - release all occupied ports
     // - remove all files related to this node
     fn clean(&self) -> Result<()> {
-        for port in self.ports.get_all_ports().iter() {
+        for port in self.ports.get_port_list().iter() {
             PC.remove(&format!("{},{}", &self.host.addr, port));
         }
 
