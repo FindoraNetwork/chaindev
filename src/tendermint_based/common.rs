@@ -2,7 +2,7 @@ use nix::unistd;
 use once_cell::sync::Lazy;
 use ruc::*;
 use serde::{Deserialize, Serialize};
-use std::{env, fmt, fs};
+use std::{env, fmt, fs, str::FromStr};
 
 ///////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////
@@ -125,5 +125,65 @@ impl From<&str> for EnvName {
 impl AsRef<str> for EnvName {
     fn as_ref(&self) -> &str {
         &self.name
+    }
+}
+
+#[derive(Debug, Copy, Clone, Deserialize, Serialize)]
+#[serde(untagged)]
+pub enum BlockItv {
+    Int(u16),
+    Float(f32),
+}
+
+impl BlockItv {
+    pub(crate) fn to_millisecond(self) -> Result<u32> {
+        const ITV_MAX: u16 = u16::MAX;
+        match self {
+            Self::Int(i) => Ok((i as u32) * 1000),
+            Self::Float(i) => {
+                if i > (ITV_MAX as f32) {
+                    Err(eg!("block interval too big, max value: {}s", ITV_MAX))
+                } else {
+                    Ok((i * 1000.0) as u32)
+                }
+            }
+        }
+    }
+}
+
+impl From<u8> for BlockItv {
+    fn from(t: u8) -> BlockItv {
+        Self::Int(t as u16)
+    }
+}
+
+impl From<u16> for BlockItv {
+    fn from(t: u16) -> BlockItv {
+        Self::Int(t)
+    }
+}
+
+impl From<f32> for BlockItv {
+    fn from(t: f32) -> BlockItv {
+        Self::Float(t)
+    }
+}
+
+impl fmt::Display for BlockItv {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Int(i) => write!(f, "{}", i),
+            Self::Float(i) => write!(f, "{}", i),
+        }
+    }
+}
+
+impl FromStr for BlockItv {
+    type Err = Box<(dyn ruc::RucError + 'static)>;
+    fn from_str(s: &str) -> Result<Self> {
+        s.parse::<u16>()
+            .map(Self::Int)
+            .c(d!())
+            .or_else(|_| s.parse::<f32>().map(Self::Float).c(d!()))
     }
 }

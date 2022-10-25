@@ -220,7 +220,7 @@ where
 
     /// seconds between two blocks
     #[serde(rename = "block_interval_in_seconds")]
-    pub block_itv_secs: u8,
+    pub block_itv_secs: BlockItv,
 
     #[serde(rename = "seed_nodes")]
     pub seeds: BTreeMap<NodeId, N>,
@@ -726,8 +726,14 @@ where
         cfg["consensus"]["timeout_prevote_delta"] = toml_value("100ms");
         cfg["consensus"]["timeout_precommit"] = toml_value("2s");
         cfg["consensus"]["timeout_precommit_delta"] = toml_value("100ms");
-        cfg["consensus"]["timeout_commit"] =
-            toml_value(self.meta.block_itv_secs.to_string() + "s");
+        cfg["consensus"]["timeout_commit"] = toml_value(
+            self.meta
+                .block_itv_secs
+                .to_millisecond()
+                .c(d!())?
+                .to_string()
+                + "ms",
+        );
         cfg["consensus"]["skip_timeout_commit"] = toml_value(false);
         cfg["consensus"]["create_empty_blocks"] = toml_value(false);
         cfg["consensus"]["create_empty_blocks_interval"] = toml_value("30s");
@@ -1274,7 +1280,7 @@ where
     pub hosts: BTreeMap<HostAddr, Host>,
 
     /// seconds between two blocks
-    pub block_itv_secs: u8,
+    pub block_itv_secs: BlockItv,
 
     /// how many initial validators should be created,
     /// default to 4
