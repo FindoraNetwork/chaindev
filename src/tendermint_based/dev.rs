@@ -39,7 +39,7 @@ where
     A: fmt::Debug + Clone + Serialize + for<'a> Deserialize<'a>,
     C: fmt::Debug + Clone + Serialize + for<'a> Deserialize<'a>,
     P: NodePorts,
-    U: CustomOp<EnvMeta<C, Node<P>>>,
+    U: CustomOp,
 {
     /// The name of this env
     pub name: EnvName,
@@ -53,48 +53,39 @@ where
     A: fmt::Debug + Clone + Serialize + for<'a> Deserialize<'a>,
     C: fmt::Debug + Clone + Serialize + for<'a> Deserialize<'a>,
     P: NodePorts,
-    U: CustomOp<EnvMeta<C, Node<P>>>,
+    U: CustomOp,
 {
-    pub fn exec<S>(&self, s: S) -> Result<Option<Env<C, P, S>>>
+    pub fn exec<S>(&self, s: S) -> Result<()>
     where
         P: NodePorts,
         S: NodeOptsGenerator<Node<P>, EnvMeta<C, Node<P>>>,
     {
         match &self.op {
-            Op::Create(opts) => Env::<C, P, S>::create(self, opts, s).c(d!()).map(Some),
+            Op::Create(opts) => Env::<C, P, S>::create(self, opts, s).c(d!()),
             Op::Destroy => Env::<C, P, S>::load_env_by_cfg(self)
                 .c(d!())
-                .and_then(|env| env.destroy().c(d!()))
-                .map(|_| None),
-            Op::DestroyAll => Env::<C, P, S>::destroy_all().c(d!()).map(|_| None),
+                .and_then(|env| env.destroy().c(d!())),
+            Op::DestroyAll => Env::<C, P, S>::destroy_all().c(d!()),
             Op::Start => Env::<C, P, S>::load_env_by_cfg(self)
                 .c(d!())
-                .and_then(|mut env| env.start(None).c(d!()))
-                .map(|_| None),
-            Op::StartAll => Env::<C, P, S>::start_all().c(d!()).map(|_| None),
+                .and_then(|mut env| env.start(None).c(d!())),
+            Op::StartAll => Env::<C, P, S>::start_all().c(d!()),
             Op::Stop => Env::<C, P, S>::load_env_by_cfg(self)
                 .c(d!())
-                .and_then(|env| env.stop().c(d!()))
-                .map(|_| None),
-            Op::StopAll => Env::<C, P, S>::stop_all().c(d!()).map(|_| None),
+                .and_then(|env| env.stop().c(d!())),
+            Op::StopAll => Env::<C, P, S>::stop_all().c(d!()),
             Op::PushNode => Env::<C, P, S>::load_env_by_cfg(self)
                 .c(d!())
-                .and_then(|mut env| env.push_node().c(d!()))
-                .map(|_| None),
+                .and_then(|mut env| env.push_node().c(d!())),
             Op::PopNode => Env::<C, P, S>::load_env_by_cfg(self)
                 .c(d!())
-                .and_then(|mut env| env.kick_node().c(d!()))
-                .map(|_| None),
+                .and_then(|mut env| env.kick_node().c(d!())),
             Op::Show => Env::<C, P, S>::load_env_by_cfg(self).c(d!()).map(|env| {
                 env.show();
-                None
             }),
-            Op::ShowAll => Env::<C, P, S>::show_all().c(d!()).map(|_| None),
-            Op::List => Env::<C, P, S>::list_all().c(d!()).map(|_| None),
-            Op::Custom(custom_op) => Env::<C, P, S>::load_env_by_cfg(self)
-                .c(d!())
-                .and_then(|env| custom_op.exec(env.meta).c(d!()))
-                .map(|_| None),
+            Op::ShowAll => Env::<C, P, S>::show_all().c(d!()),
+            Op::List => Env::<C, P, S>::list_all().c(d!()),
+            Op::Custom(custom_op) => custom_op.exec(&self.name).c(d!()),
             Op::Nil(_) => unreachable!(),
         }
     }
@@ -209,14 +200,10 @@ where
 {
     // - initilize a new env
     // - `genesis.json` will be created
-    fn create<A, U>(
-        cfg: &EnvCfg<A, C, P, U>,
-        opts: &EnvOpts<A, C>,
-        s: S,
-    ) -> Result<Env<C, P, S>>
+    fn create<A, U>(cfg: &EnvCfg<A, C, P, U>, opts: &EnvOpts<A, C>, s: S) -> Result<()>
     where
         A: fmt::Debug + Clone + Serialize + for<'a> Deserialize<'a>,
-        U: CustomOp<EnvMeta<C, Node<P>>>,
+        U: CustomOp,
     {
         let home = format!("{}/envs/{}", &*GLOBAL_BASE_DIR, &cfg.name);
 
@@ -270,7 +257,6 @@ where
             .c(d!())
             .and_then(|_| env.apply_genesis(None).c(d!()))
             .and_then(|_| env.start(None).c(d!()))
-            .map(|_| env)
     }
 
     // start one or all nodes
@@ -785,7 +771,7 @@ where
     fn load_env_by_cfg<A, U>(cfg: &EnvCfg<A, C, P, U>) -> Result<Env<C, P, S>>
     where
         A: fmt::Debug + Clone + Serialize + for<'a> Deserialize<'a>,
-        U: CustomOp<EnvMeta<C, Node<P>>>,
+        U: CustomOp,
     {
         Self::load_env_by_name(&cfg.name)
             .c(d!())
@@ -912,7 +898,7 @@ where
     A: fmt::Debug + Clone + Serialize + for<'a> Deserialize<'a>,
     C: fmt::Debug + Clone + Serialize + for<'a> Deserialize<'a>,
     P: NodePorts,
-    U: CustomOp<EnvMeta<C, Node<P>>>,
+    U: CustomOp,
 {
     Create(EnvOpts<A, C>),
     Destroy,

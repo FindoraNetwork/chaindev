@@ -47,16 +47,17 @@ pub trait NodeOptsGenerator<N, E>:
     fn tendermint_opts(&self, node: &N, env_meta: &E) -> (String, String);
 }
 
-pub trait CustomOp<E>:
+pub trait CustomOp:
     Clone + fmt::Debug + Send + Sync + Serialize + for<'a> Deserialize<'a>
 {
-    #[allow(unused_variables)]
-    fn exec(&self, env_meta: E) -> Result<()> {
+    fn exec(&self, env_name: &EnvName) -> Result<()>;
+}
+
+impl CustomOp for () {
+    fn exec(&self, _: &EnvName) -> Result<()> {
         Ok(())
     }
 }
-
-impl<T> CustomOp<T> for () {}
 
 ///////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////
