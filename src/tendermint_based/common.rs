@@ -188,3 +188,18 @@ impl FromStr for BlockItv {
             .or_else(|_| s.parse::<f32>().map(Self::Float).c(d!()))
     }
 }
+
+impl From<BlockItv> for f32 {
+    fn from(t: BlockItv) -> Self {
+        match t {
+            BlockItv::Int(i) => i as f32,
+            BlockItv::Float(i) => i,
+        }
+    }
+}
+
+impl From<BlockItv> for f64 {
+    fn from(t: BlockItv) -> Self {
+        f32::from(t) as f64
+    }
+}
