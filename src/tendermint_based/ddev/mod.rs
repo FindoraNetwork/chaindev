@@ -707,17 +707,17 @@ where
         cfg["consensus"]["timeout_prevote_delta"] = toml_value("100ms");
         cfg["consensus"]["timeout_precommit"] = toml_value("2s");
         cfg["consensus"]["timeout_precommit_delta"] = toml_value("100ms");
-        cfg["consensus"]["timeout_commit"] = toml_value(
-            self.meta
-                .block_itv_secs
-                .to_millisecond()
-                .c(d!())?
-                .to_string()
-                + "ms",
-        );
+        let block_itv = self
+            .meta
+            .block_itv_secs
+            .to_millisecond()
+            .c(d!())?
+            .to_string()
+            + "ms";
+        cfg["consensus"]["timeout_commit"] = toml_value(&block_itv);
         cfg["consensus"]["skip_timeout_commit"] = toml_value(false);
         cfg["consensus"]["create_empty_blocks"] = toml_value(false);
-        cfg["consensus"]["create_empty_blocks_interval"] = toml_value("30s");
+        cfg["consensus"]["create_empty_blocks_interval"] = toml_value(&block_itv);
 
         cfg["mempool"]["recheck"] = toml_value(false);
 
