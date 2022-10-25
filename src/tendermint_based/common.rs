@@ -51,7 +51,7 @@ pub trait CustomOp<E>:
     Clone + fmt::Debug + Send + Sync + Serialize + for<'a> Deserialize<'a>
 {
     #[allow(unused_variables)]
-    fn exec(&self, env_meta: &E) -> Result<()> {
+    fn exec(&self, env_meta: E) -> Result<()> {
         Ok(())
     }
 }

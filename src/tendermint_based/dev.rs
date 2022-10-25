@@ -93,7 +93,7 @@ where
             Op::List => Env::<C, P, S>::list_all().c(d!()).map(|_| None),
             Op::Custom(custom_op) => Env::<C, P, S>::load_env_by_cfg(self)
                 .c(d!())
-                .and_then(|env| custom_op.exec(&env.meta).c(d!()))
+                .and_then(|env| custom_op.exec(env.meta).c(d!()))
                 .map(|_| None),
             Op::Nil(_) => unreachable!(),
         }
