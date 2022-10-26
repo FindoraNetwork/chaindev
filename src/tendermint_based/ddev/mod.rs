@@ -21,7 +21,7 @@ use toml_edit::{value as toml_value, Document};
 use vsdb::MapxRaw;
 
 pub use super::common::*;
-pub use host::{param_parse_hosts, Host, HostAddr, HostMap};
+pub use host::{Host, HostAddr, Hosts};
 
 static GLOBAL_BASE_DIR: Lazy<String> = Lazy::new(|| format!("{}/__D_DEV__", &*BASE_DIR));
 
@@ -191,7 +191,7 @@ where
     pub home: String,
 
     #[serde(rename = "remote_hosts")]
-    pub hosts: BTreeMap<HostAddr, Host>,
+    pub hosts: Hosts,
 
     #[serde(rename = "app_bin_path")]
     pub app_bin: String,
@@ -263,7 +263,7 @@ where
     }
 
     pub fn get_any_host(&self) -> &Host {
-        pnk!(self.hosts.values().last())
+        pnk!(self.hosts.as_ref().values().last())
     }
 }
 
@@ -305,6 +305,7 @@ where
             omit!(fs::remove_dir_all(&home).c(d!()).and_then(|_| {
                 let errlist = thread::scope(|s| {
                     opts.hosts
+                        .as_ref()
                         .values()
                         .map(|h| {
                             let remote = Remote::from(h);
@@ -324,6 +325,7 @@ where
         if fs::metadata(&home).is_ok()
             || thread::scope(|s| {
                 opts.hosts
+                    .as_ref()
                     .values()
                     .map(|h| {
                         let remote = Remote::from(h);
@@ -364,6 +366,7 @@ where
             let errlist = thread::scope(|s| {
                 env.meta
                     .hosts
+                    .as_ref()
                     .values()
                     .map(|h| {
                         let remote = Remote::from(h);
@@ -506,6 +509,7 @@ where
         let errlist = thread::scope(|s| {
             self.meta
                 .hosts
+                .as_ref()
                 .values()
                 .map(|h| {
                     s.spawn(move || {
@@ -532,7 +536,7 @@ where
                 .c(d!())?
                 .c(d!("BUG: env not found!"))?;
             env.destroy().c(d!())?;
-            hosts.append(&mut env.meta.hosts);
+            hosts.append(env.meta.hosts.as_mut());
         }
         fs::remove_dir_all(&*GLOBAL_BASE_DIR)
             .c(d!())
@@ -572,7 +576,12 @@ where
             .c(d!("at least one Full Node should be kept!"))
             .and_then(|k| self.meta.nodes.remove(&k).c(d!()))
             .and_then(|n| {
-                self.meta.hosts.get_mut(&n.host.addr).unwrap().node_cnt -= 1;
+                self.meta
+                    .hosts
+                    .as_mut()
+                    .get_mut(&n.host.addr)
+                    .unwrap()
+                    .node_cnt -= 1;
                 n.stop().c(d!()).and_then(|_| n.clean().c(d!()))
             })
             .and_then(|_| self.write_cfg().c(d!()))
@@ -1060,6 +1069,7 @@ where
         let (max_host, max_weight) = self
             .meta
             .hosts
+            .as_ref()
             .values()
             .map(|h| (h.meta.clone(), h.weight))
             .max_by(|a, b| a.1.cmp(&b.1))
@@ -1071,6 +1081,7 @@ where
             let mut seq = self
                 .meta
                 .hosts
+                .as_ref()
                 .values()
                 .map(|h| (h.meta.clone(), (h.node_cnt * max_weight) / h.weight))
                 .collect::<Vec<_>>();
@@ -1078,7 +1089,7 @@ where
             seq.into_iter().next().c(d!()).map(|h| h.0)?
         };
 
-        self.meta.hosts.get_mut(&h.addr).unwrap().node_cnt += 1;
+        self.meta.hosts.as_mut().get_mut(&h.addr).unwrap().node_cnt += 1;
 
         Ok(h)
     }
@@ -1231,17 +1242,17 @@ where
     HostPutFile {
         local_path: String,
         remote_path: Option<String>,
-        hosts: Option<BTreeMap<HostAddr, Host>>,
+        hosts: Option<Hosts>,
     },
     HostGetFile {
         remote_path: String,
         local_base_dir: Option<String>,
-        hosts: Option<BTreeMap<HostAddr, Host>>,
+        hosts: Option<Hosts>,
     },
     HostExec {
         cmd: Option<String>,
         script_path: Option<String>,
-        hosts: Option<BTreeMap<HostAddr, Host>>,
+        hosts: Option<Hosts>,
     },
     NodeCollectLogs {
         local_base_dir: Option<String>,
@@ -1259,7 +1270,7 @@ where
     C: Send + Sync + fmt::Debug + Clone + Serialize + for<'a> Deserialize<'a>,
 {
     /// host list of the env
-    pub hosts: BTreeMap<HostAddr, Host>,
+    pub hosts: Hosts,
 
     /// seconds between two blocks
     pub block_itv_secs: BlockItv,

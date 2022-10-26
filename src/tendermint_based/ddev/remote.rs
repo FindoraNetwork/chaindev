@@ -1,14 +1,14 @@
 use crate::{
     check_errlist,
     tendermint_based::ddev::{
-        host::{Host, HostAddr, HostMeta, HostOS},
+        host::{Host, HostMeta, HostOS, Hosts},
         Env, EnvMeta, Node, NodeOptsGenerator, NodePorts,
     },
 };
 use ruc::{ssh, *};
 use serde::{Deserialize, Serialize};
 use std::{
-    collections::{BTreeMap, BTreeSet},
+    collections::BTreeSet,
     path::{Path, PathBuf},
 };
 use std::{fmt, fs, sync::Mutex, thread};
@@ -137,7 +137,7 @@ impl<'a> Remote<'a> {
 
 // put a local file to some hosts
 pub(super) fn put_file_to_hosts(
-    hosts: &BTreeMap<HostAddr, Host>,
+    hosts: &Hosts,
     local_path: &str,
     remote_path: Option<&str>,
 ) -> Result<()> {
@@ -149,6 +149,7 @@ pub(super) fn put_file_to_hosts(
 
     let errlist = thread::scope(|s| {
         hosts
+            .as_ref()
             .values()
             .map(|h| {
                 s.spawn(move || {
@@ -168,7 +169,7 @@ pub(super) fn put_file_to_hosts(
 
 // get a remote file from some hosts
 pub(super) fn get_file_from_hosts(
-    hosts: &BTreeMap<HostAddr, Host>,
+    hosts: &Hosts,
     remote_path: &str,
     local_base_dir: Option<&str>,
 ) -> Result<()> {
@@ -183,6 +184,7 @@ pub(super) fn get_file_from_hosts(
 
     let errlist = thread::scope(|s| {
         hosts
+            .as_ref()
             .values()
             .map(|h| {
                 let local_path =
@@ -204,7 +206,7 @@ pub(super) fn get_file_from_hosts(
 
 // execute some commands or a script on some hosts
 pub(super) fn exec_cmds_on_hosts(
-    hosts: &BTreeMap<HostAddr, Host>,
+    hosts: &Hosts,
     cmd: Option<&str>,
     script_path: Option<&str>,
 ) -> Result<()> {
@@ -213,6 +215,7 @@ pub(super) fn exec_cmds_on_hosts(
     if let Some(cmd) = cmd {
         let errlist = thread::scope(|s| {
             hosts
+                .as_ref()
                 .values()
                 .map(|h| {
                     s.spawn(move || {
@@ -241,6 +244,7 @@ pub(super) fn exec_cmds_on_hosts(
 
         let errlist = thread::scope(|s| {
             hosts
+                .as_ref()
                 .values()
                 .map(|h| {
                     let remote = Remote::from(h);

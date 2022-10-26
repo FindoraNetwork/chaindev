@@ -2,7 +2,7 @@ use super::remote::Remote;
 use once_cell::sync::Lazy;
 use ruc::*;
 use serde::{Deserialize, Serialize};
-use std::{collections::BTreeMap, env, path::PathBuf, thread};
+use std::{collections::BTreeMap, env, path::PathBuf, str::FromStr, thread};
 
 static DEFAULT_SSH_USER: Lazy<String> =
     Lazy::new(|| pnk!(env::var("USER"), "$USER not defined!"));
@@ -15,8 +15,6 @@ static DEFAULT_SSH_PRIVKEY_PATH: Lazy<PathBuf> = Lazy::new(|| {
 
 // ip, domain, ...
 pub type HostAddr = String;
-
-pub type HostMap = BTreeMap<HostAddr, Host>;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Host {
@@ -45,8 +43,50 @@ pub(super) enum HostOS {
     Unknown(String),
 }
 
+type HostMap = BTreeMap<HostAddr, Host>;
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct Hosts(HostMap);
+
+impl FromStr for Hosts {
+    type Err = Box<dyn RucError>;
+    fn from_str(s: &str) -> Result<Self> {
+        param_parse_hosts(s).c(d!()).map(Hosts)
+    }
+}
+
+impl From<&str> for Hosts {
+    fn from(s: &str) -> Self {
+        pnk!(Self::from_str(s))
+    }
+}
+
+impl From<&String> for Hosts {
+    fn from(s: &String) -> Self {
+        pnk!(Self::from_str(s.as_str()))
+    }
+}
+
+impl From<String> for Hosts {
+    fn from(s: String) -> Self {
+        pnk!(Self::from_str(s.as_str()))
+    }
+}
+
+impl AsRef<HostMap> for Hosts {
+    fn as_ref(&self) -> &HostMap {
+        &self.0
+    }
+}
+
+impl AsMut<HostMap> for Hosts {
+    fn as_mut(&mut self) -> &mut HostMap {
+        &mut self.0
+    }
+}
+
 /// "ssh_remote_addr#ssh_user#ssh_remote_port#weight#ssh_local_privkey,..."
-pub fn param_parse_hosts(hosts: &str) -> Result<BTreeMap<HostAddr, Host>> {
+pub fn param_parse_hosts(hosts: &str) -> Result<HostMap> {
     let hosts = hosts
         .trim_matches(|c| c == ' ' || c == '\t')
         .split(',')
