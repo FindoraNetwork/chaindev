@@ -20,7 +20,7 @@ pub type HostMap = BTreeMap<HostAddr, Host>;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Host {
-    pub(super) meta: HostMeta,
+    pub meta: HostMeta,
 
     // weight used when allocating nodes
     pub(super) weight: u64,
@@ -30,10 +30,10 @@ pub struct Host {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
-pub(super) struct HostMeta {
-    pub(super) addr: HostAddr,
-    pub(super) ssh_user: String,
-    pub(super) ssh_port: u16,
+pub struct HostMeta {
+    pub addr: HostAddr,
+    pub ssh_user: String,
+    pub ssh_port: u16,
     pub(super) ssh_local_privkey: PathBuf,
 }
 

@@ -191,7 +191,7 @@ where
     pub home: String,
 
     #[serde(rename = "remote_hosts")]
-    hosts: BTreeMap<HostAddr, Host>,
+    pub hosts: BTreeMap<HostAddr, Host>,
 
     #[serde(rename = "app_bin_path")]
     pub app_bin: String,
@@ -260,6 +260,10 @@ where
                 _ => Err(eg!(e)),
             },
         }
+    }
+
+    pub fn get_any_host(&self) -> &Host {
+        pnk!(self.hosts.values().last())
     }
 }
 
@@ -1129,7 +1133,7 @@ pub struct Node<P: NodePorts> {
     #[serde(rename = "node_home_dir")]
     pub home: String,
     kind: Kind,
-    host: HostMeta,
+    pub host: HostMeta,
     pub ports: P,
 }
 
