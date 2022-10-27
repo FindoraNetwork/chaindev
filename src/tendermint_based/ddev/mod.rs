@@ -48,7 +48,7 @@ where
     A: fmt::Debug + Clone + Serialize + for<'a> Deserialize<'a>,
     C: Send + Sync + fmt::Debug + Clone + Serialize + for<'a> Deserialize<'a>,
     P: NodePorts,
-    U: CustomOp,
+    U: CustomOps,
 {
     /// The name of this env
     pub name: EnvName,
@@ -62,7 +62,7 @@ where
     A: fmt::Debug + Clone + Serialize + for<'a> Deserialize<'a>,
     C: Send + Sync + fmt::Debug + Clone + Serialize + for<'a> Deserialize<'a>,
     P: NodePorts,
-    U: CustomOp,
+    U: CustomOps,
 {
     pub fn exec<S>(&self, s: S) -> Result<()>
     where
@@ -300,7 +300,7 @@ where
     fn create<A, U>(cfg: &EnvCfg<A, C, P, U>, opts: &EnvOpts<A, C>, s: S) -> Result<()>
     where
         A: fmt::Debug + Clone + Serialize + for<'a> Deserialize<'a>,
-        U: CustomOp,
+        U: CustomOps,
     {
         let home = format!("{}/envs/{}", &*GLOBAL_BASE_DIR, &cfg.name);
 
@@ -1035,7 +1035,7 @@ where
     fn load_env_by_cfg<A, U>(cfg: &EnvCfg<A, C, P, U>) -> Result<Env<C, P, S>>
     where
         A: fmt::Debug + Clone + Serialize + for<'a> Deserialize<'a>,
-        U: CustomOp,
+        U: CustomOps,
     {
         Self::load_env_by_name(&cfg.name)
             .c(d!())
@@ -1233,7 +1233,7 @@ where
     A: fmt::Debug + Clone + Serialize + for<'a> Deserialize<'a>,
     C: Send + Sync + fmt::Debug + Clone + Serialize + for<'a> Deserialize<'a>,
     P: NodePorts,
-    U: CustomOp,
+    U: CustomOps,
 {
     Create(EnvOpts<A, C>),
     Destroy,
