@@ -15,6 +15,7 @@ static DEFAULT_SSH_PRIVKEY_PATH: Lazy<PathBuf> = Lazy::new(|| {
 
 // ip, domain, ...
 pub type HostAddr = String;
+pub type HostAddrRef<'a> = &'a str;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Host {

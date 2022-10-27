@@ -2,6 +2,7 @@
 //! Localhost version.
 //!
 
+use super::ddev::HostAddrRef;
 use nix::{
     sys::socket::{
         self, setsockopt, socket, sockopt, AddressFamily, SockFlag, SockType, SockaddrIn,
@@ -175,6 +176,10 @@ where
                 _ => Err(eg!(e)),
             },
         }
+    }
+
+    pub fn get_host_addr(&self) -> HostAddrRef {
+        self.host_ip.as_str()
     }
 }
 

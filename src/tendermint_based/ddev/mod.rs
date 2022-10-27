@@ -21,7 +21,7 @@ use toml_edit::{value as toml_value, Document};
 use vsdb::MapxRaw;
 
 pub use super::common::*;
-pub use host::{Host, HostAddr, Hosts};
+pub use host::{Host, HostAddr, HostAddrRef, Hosts};
 
 static GLOBAL_BASE_DIR: Lazy<String> = Lazy::new(|| format!("{}/__D_DEV__", &*BASE_DIR));
 
@@ -262,8 +262,16 @@ where
         }
     }
 
-    pub fn get_any_host(&self) -> &Host {
+    pub fn get_host_any(&self) -> &Host {
         pnk!(self.hosts.as_ref().values().last())
+    }
+
+    pub fn get_host_addr_any(&self) -> HostAddrRef {
+        self.get_host_any().meta.addr.as_str()
+    }
+
+    pub fn get_host_addr(&self) -> HostAddrRef {
+        self.get_host_addr_any()
     }
 }
 
