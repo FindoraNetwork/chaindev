@@ -262,16 +262,11 @@ where
         }
     }
 
-    pub fn get_host_any(&self) -> &Host {
-        pnk!(self.hosts.as_ref().values().last())
-    }
-
-    pub fn get_host_addr_any(&self) -> HostAddrRef {
-        self.get_host_any().meta.addr.as_str()
-    }
-
-    pub fn get_host_addr(&self) -> HostAddrRef {
-        self.get_host_addr_any()
+    pub fn get_addrports_any_node(&self) -> (HostAddrRef, Vec<u16>) {
+        let node = pnk!(self.nodes.values().next());
+        let addr = node.host.addr.as_str();
+        let ports = node.ports.get_port_list();
+        (addr, ports)
     }
 }
 
