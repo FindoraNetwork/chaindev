@@ -1321,7 +1321,7 @@ impl PortsCache {
         for p in ports {
             assert!(
                 unsafe { self.port_set.shadow() }
-                    .insert(p.as_bytes(), &[1])
+                    .insert(p.as_bytes(), [1])
                     .is_none()
             );
         }
