@@ -236,7 +236,7 @@ pub(super) fn exec_cmds_on_hosts(
         check_errlist!(errlist)
     } else if let Some(sp) = script_path {
         let tmp_script_path = format!("/tmp/._{}", rand::random::<u64>());
-        let cmd = format!("bash {}", tmp_script_path);
+        let cmd = format!("bash --login {}", tmp_script_path);
 
         let script = fs::read_to_string(sp).c(d!())?;
         let script =
