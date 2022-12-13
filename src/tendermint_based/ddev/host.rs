@@ -6,11 +6,22 @@ use std::{collections::BTreeMap, env, path::PathBuf, str::FromStr, thread};
 
 static DEFAULT_SSH_USER: Lazy<String> =
     Lazy::new(|| pnk!(env::var("USER"), "$USER not defined!"));
-static DEFAULT_SSH_PRIVKEY_PATH: Lazy<PathBuf> = Lazy::new(|| {
-    PathBuf::from(format!(
-        "{}/.ssh/id_rsa",
-        pnk!(env::var("HOME"), "$HOME not defined!")
-    ))
+
+static DEFAULT_SSH_PRIVKEY_PATH: Lazy<Vec<PathBuf>> = Lazy::new(|| {
+    let home = env::var("HOME").expect("$HOME not defined!");
+
+    let ed25519_key_path = PathBuf::from(format!("{}/.ssh/id_ed25519", &home));
+    let rsa_key_path = PathBuf::from(home + "{}/.ssh/id_rsa");
+
+    let mut ret = vec![];
+
+    if ed25519_key_path.exists() {
+        ret.push(ed25519_key_path);
+    } else if rsa_key_path.exists() {
+        ret.push(rsa_key_path);
+    };
+
+    ret
 });
 
 // ip, domain, ...
@@ -33,7 +44,7 @@ pub struct HostMeta {
     pub addr: HostAddr,
     pub ssh_user: String,
     pub ssh_port: u16,
-    pub(super) ssh_local_privkey: PathBuf,
+    pub(super) ssh_local_seckeys: Vec<PathBuf>,
 }
 
 #[derive(Debug, Clone)]
@@ -107,7 +118,7 @@ pub fn param_parse_hosts(hosts: &str) -> Result<HostMap> {
                         addr: h[0].to_owned(),
                         ssh_user: DEFAULT_SSH_USER.clone(),
                         ssh_port: 22,
-                        ssh_local_privkey: DEFAULT_SSH_PRIVKEY_PATH.clone(),
+                        ssh_local_seckeys: DEFAULT_SSH_PRIVKEY_PATH.clone(),
                     },
                     weight: 0,
                     node_cnt: 0,
@@ -118,7 +129,7 @@ pub fn param_parse_hosts(hosts: &str) -> Result<HostMap> {
                         addr: h[0].to_owned(),
                         ssh_user: h[1].to_owned(),
                         ssh_port: 22,
-                        ssh_local_privkey: DEFAULT_SSH_PRIVKEY_PATH.clone(),
+                        ssh_local_seckeys: DEFAULT_SSH_PRIVKEY_PATH.clone(),
                     },
                     weight: 0,
                     node_cnt: 0,
@@ -129,7 +140,7 @@ pub fn param_parse_hosts(hosts: &str) -> Result<HostMap> {
                         addr: h[0].to_owned(),
                         ssh_user: h[1].to_owned(),
                         ssh_port: p,
-                        ssh_local_privkey: DEFAULT_SSH_PRIVKEY_PATH.clone(),
+                        ssh_local_seckeys: DEFAULT_SSH_PRIVKEY_PATH.clone(),
                     },
                     weight: 0,
                     node_cnt: 0,
@@ -141,9 +152,9 @@ pub fn param_parse_hosts(hosts: &str) -> Result<HostMap> {
                             addr: h[0].to_owned(),
                             ssh_user: h[1].to_owned(),
                             ssh_port: p,
-                            ssh_local_privkey: alt!(
+                            ssh_local_seckeys: alt!(
                                 5 == h.len(),
-                                PathBuf::from(h[4]),
+                                vec![PathBuf::from(h[4])],
                                 DEFAULT_SSH_PRIVKEY_PATH.clone()
                             ),
                         },
