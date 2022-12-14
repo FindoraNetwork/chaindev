@@ -65,9 +65,10 @@ impl CustomOps for () {
 // global shared paths should not be used to avoid confusion
 // when multiple users share a same physical machine
 pub(crate) static BASE_DIR: Lazy<String> = Lazy::new(|| {
-    let ret = env::var("CHAIN_DEV_GLOBAL_BASE_DIR").unwrap_or_else(|_| {
+    let ret = env::var("RUNTIME_CHAIN_DEV_BASE_DIR").unwrap_or_else(|_| {
         format!(
-            "/tmp/__CHAIN_DEV__/{}/{}",
+            "/tmp/__CHAIN_DEV__{}/{}/{}",
+            option_env!("STATIC_CHAIN_DEV_BASE_DIR_SUFFIX").unwrap_or(""),
             unistd::gethostname().unwrap().into_string().unwrap(),
             unistd::User::from_uid(unistd::getuid())
                 .unwrap()

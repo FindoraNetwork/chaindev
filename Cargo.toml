@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 authors = ["fhfanhui@gmail.com"]
 license = "GPLv3"
-#build = "build.rs"
+# build = "build.rs"
 
 [dependencies]
 nix = "0.26.1"
