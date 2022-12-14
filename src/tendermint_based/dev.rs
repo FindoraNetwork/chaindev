@@ -962,7 +962,7 @@ fn port_is_free(port: u16) -> bool {
             "\n\x1b[33;01mNOTE: port {} can NOT be occupied!\x1b[00m",
             port
         );
-        info_omit!(ret);
+        // info_omit!(ret);
         false
     }
 }

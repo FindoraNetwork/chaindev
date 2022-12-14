@@ -1,9 +1,13 @@
 [package]
 name = "chaindev"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
-authors = ["fhfanhui@gmail.com"]
-license = "GPLv3"
+authors = ["hui.fan@mail.ru","fhfanhui@gmail.com"]
+description = "Powerful development and testing utils for blockchain developers."
+homepage = "https://github.com/rust-util-collections/chaindev"
+repository = "https://github.com/rust-util-collections/chaindev"
+keywords = ["blockchain", "tendermint", "substrate", "development"]
+license = "GPL-3.0"
 # build = "build.rs"
 
 [dependencies]
