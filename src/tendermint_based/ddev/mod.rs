@@ -748,6 +748,7 @@ where
                 cfg["p2p"]["max_num_outbound_peers"] = toml_value(10);
                 cfg["mempool"]["broadcast"] = toml_value(true);
                 cfg["mempool"]["size"] = toml_value(200_0000);
+                cfg["mempool"]["cache_size"] = toml_value(200_0000);
                 cfg["mempool"]["max_txs_bytes"] = toml_value(5 * GB);
                 cfg["tx_index"]["indexer"] = toml_value("kv");
                 cfg["rpc"]["max_open_connections"] = toml_value(10_0000);
