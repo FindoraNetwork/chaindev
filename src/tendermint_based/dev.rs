@@ -485,7 +485,7 @@ where
             ports.get_sys_p2p()
         ));
 
-        cfg["consensus"]["timeout_propose"] = toml_value("16s");
+        cfg["consensus"]["timeout_propose"] = toml_value("32s");
         cfg["consensus"]["timeout_propose_delta"] = toml_value("100ms");
         cfg["consensus"]["timeout_prevote"] = toml_value("2s");
         cfg["consensus"]["timeout_prevote_delta"] = toml_value("100ms");
