@@ -253,7 +253,7 @@ where
         S: NodeOptsGenerator<Node<P>, EnvMeta<C, Node<P>>>,
     {
         let p = format!("{}/envs/{}/config.json", &*GLOBAL_BASE_DIR, cfg_name);
-        match fs::read_to_string(&p) {
+        match fs::read_to_string(p) {
             Ok(d) => Ok(serde_json::from_str(&d).c(d!())?),
             Err(e) => match e.kind() {
                 ErrorKind::NotFound => Ok(None),
@@ -772,7 +772,7 @@ where
             .map_err(|e| eg!(e))
             .and_then(|cfg| {
                 remote
-                    .read_file(PathBuf::from(&home).join(&cfg.node_key_file))
+                    .read_file(PathBuf::from(&home).join(cfg.node_key_file))
                     .c(d!())
             })
             .and_then(|contents| NodeKey::parse_json(contents).c(d!()))?
@@ -915,7 +915,7 @@ where
                         .and_then(|f| {
                             remote.read_file(PathBuf::from(&n.home).join(f)).c(d!())
                         })
-                        .and_then(|c| TmValidatorKey::parse_json(&c).map_err(|e| eg!(e)))
+                        .and_then(|c| TmValidatorKey::parse_json(c).map_err(|e| eg!(e)))
                 })
                 .map(|key| TmValidator::new(key.pub_key, TmPower::from(PRESET_POWER)))
         };
@@ -930,7 +930,7 @@ where
                     .flat_map(|h| h.join())
                     .collect::<Result<Vec<_>>>()
             })
-            .and_then(|vs| serde_json::to_value(&vs).c(d!()))
+            .and_then(|vs| serde_json::to_value(vs).c(d!()))
             .and_then(|mut vs| {
                 vs.as_array_mut()
                     .c(d!())?
@@ -1001,7 +1001,7 @@ where
                         .read_file(cfgfile)
                         .c(d!())
                         .and_then(|c| TmConfig::parse_toml(c).map_err(|e| eg!(e)))
-                        .map(|cfg| PathBuf::from(&n.home).join(&cfg.genesis_file))
+                        .map(|cfg| PathBuf::from(&n.home).join(cfg.genesis_file))
                         .and_then(|genesis_path| {
                             self.meta
                                 .genesis

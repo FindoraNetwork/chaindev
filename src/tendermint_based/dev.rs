@@ -169,7 +169,7 @@ where
         S: NodeOptsGenerator<Node<P>, EnvMeta<C, Node<P>>>,
     {
         let p = format!("{}/envs/{}/config.json", &*GLOBAL_BASE_DIR, cfg_name);
-        match fs::read_to_string(&p) {
+        match fs::read_to_string(p) {
             Ok(d) => Ok(serde_json::from_str(&d).c(d!())?),
             Err(e) => match e.kind() {
                 ErrorKind::NotFound => Ok(None),
@@ -696,7 +696,7 @@ where
                         })
                 })
                 .collect::<Result<Vec<_>>>()
-                .and_then(|vs| serde_json::to_value(&vs).c(d!()))
+                .and_then(|vs| serde_json::to_value(vs).c(d!()))
                 .and_then(|mut vs| {
                     vs.as_array_mut().c(d!())?.iter_mut().enumerate().for_each(
                         |(i, v)| {
@@ -763,7 +763,7 @@ where
                                 .as_ref()
                                 .c(d!("BUG"))
                                 .and_then(|g| serde_json::to_vec_pretty(g).c(d!()))
-                                .and_then(|g| fs::write(genesis_path, &g).c(d!()))
+                                .and_then(|g| fs::write(genesis_path, g).c(d!()))
                         })
                 })?;
         }
