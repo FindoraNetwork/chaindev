@@ -750,8 +750,8 @@ where
                 cfg["mempool"]["size"] = toml_value(200_0000);
                 cfg["mempool"]["cache_size"] = toml_value(200_0000);
                 cfg["mempool"]["max_txs_bytes"] = toml_value(5 * GB);
-                cfg["tx_index"]["indexer"] = toml_value("kv");
                 cfg["rpc"]["max_open_connections"] = toml_value(10_0000);
+                cfg["tx_index"]["indexer"] = toml_value("null");
             }
             Kind::Seed => {
                 cfg["p2p"]["pex"] = toml_value(true);
@@ -759,7 +759,8 @@ where
                 cfg["p2p"]["max_num_inbound_peers"] = toml_value(400);
                 cfg["p2p"]["max_num_outbound_peers"] = toml_value(100);
                 cfg["mempool"]["broadcast"] = toml_value(false);
-                cfg["tx_index"]["indexer"] = toml_value("null");
+                cfg["tx_index"]["indexer"] = toml_value("kv");
+                cfg["tx_index"]["index_all_keys"] = toml_value(true);
             }
         }
         let cfg = cfg.to_string();
@@ -1111,7 +1112,7 @@ where
         let port_is_free = |p: &u16| !occupied.contains(p);
 
         let mut res = vec![];
-        if matches!(node_kind, Kind::Node)
+        if matches!(node_kind, Kind::Seed)
             && ENV_NAME_DEFAULT == self.meta.name.as_ref()
             && reserved.iter().all(|hp| !PC.contains(hp))
             && reserved_ports.iter().all(|p| port_is_free(p))
