@@ -1,5 +1,5 @@
 # Change log
 
-#### v0.1.0
+#### v0.2.x
 
-TODO
+- Make 'Seed Node' acting as a RPC server
