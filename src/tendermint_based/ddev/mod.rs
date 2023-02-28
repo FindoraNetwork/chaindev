@@ -17,7 +17,7 @@ use tendermint::{validator::Info as TmValidator, vote::Power as TmPower, Genesis
 use tendermint_config::{
     NodeKey, PrivValidatorKey as TmValidatorKey, TendermintConfig as TmConfig,
 };
-use toml_edit::{value as toml_value, Document};
+use toml_edit::{value as toml_value, Array, Document};
 use vsdb::MapxRaw;
 
 pub use super::common::*;
@@ -710,6 +710,12 @@ where
             _ => return Err(eg!("Unsupported OS: {:?}!", remote_os)),
         }
 
+        let mut arr = Array::new();
+        arr.push("*");
+        cfg["rpc"]["cors_allowed_origins"] = toml_value(arr);
+        cfg["rpc"]["max_open_connections"] = toml_value(10_0000);
+
+        cfg["p2p"]["pex"] = toml_value(true);
         cfg["p2p"]["addr_book_strict"] = toml_value(false);
         cfg["p2p"]["allow_duplicate_ip"] = toml_value(true);
         cfg["p2p"]["persistent_peers_max_dial_period"] = toml_value("3s");
@@ -737,28 +743,24 @@ where
         cfg["consensus"]["create_empty_blocks_interval"] = toml_value(&block_itv);
 
         cfg["mempool"]["recheck"] = toml_value(false);
+        cfg["mempool"]["broadcast"] = toml_value(true);
+        cfg["mempool"]["size"] = toml_value(200_0000);
+        cfg["mempool"]["cache_size"] = toml_value(200_0000);
+        cfg["mempool"]["max_txs_bytes"] = toml_value(5 * GB);
 
         cfg["moniker"] = toml_value(format!("{}-{}", &self.meta.name, id));
 
         match kind {
             Kind::Node => {
-                cfg["p2p"]["pex"] = toml_value(true);
                 cfg["p2p"]["seed_mode"] = toml_value(false);
                 cfg["p2p"]["max_num_inbound_peers"] = toml_value(40);
                 cfg["p2p"]["max_num_outbound_peers"] = toml_value(10);
-                cfg["mempool"]["broadcast"] = toml_value(true);
-                cfg["mempool"]["size"] = toml_value(200_0000);
-                cfg["mempool"]["cache_size"] = toml_value(200_0000);
-                cfg["mempool"]["max_txs_bytes"] = toml_value(5 * GB);
-                cfg["rpc"]["max_open_connections"] = toml_value(10_0000);
                 cfg["tx_index"]["indexer"] = toml_value("null");
             }
             Kind::Seed => {
-                cfg["p2p"]["pex"] = toml_value(true);
                 cfg["p2p"]["seed_mode"] = toml_value(true);
                 cfg["p2p"]["max_num_inbound_peers"] = toml_value(400);
                 cfg["p2p"]["max_num_outbound_peers"] = toml_value(100);
-                cfg["mempool"]["broadcast"] = toml_value(false);
                 cfg["tx_index"]["indexer"] = toml_value("kv");
                 cfg["tx_index"]["index_all_keys"] = toml_value(true);
             }
