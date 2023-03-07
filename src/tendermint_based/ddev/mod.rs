@@ -959,7 +959,7 @@ where
                             g["genesis_time"].as_str().unwrap().replacen('2', "1", 1),
                         );
                         g["consensus_params"]["block"]["max_bytes"] =
-                            serde_json::to_value((1 * MB).to_string()).unwrap();
+                            serde_json::to_value(MB.to_string()).unwrap();
                         self.meta.genesis = Some(serde_json::from_value(g).c(d!())?);
                         Ok(())
                     })
