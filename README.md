@@ -9,3 +9,11 @@ Powerful development and testing utils for blockchain developers.
 
 - [Tendermint based chains](src/tendermint_based)
 - [Substrate based chains(todo!)](src/substrate_based)
+
+### Gratitude
+
+Thanks to all the people who already contributed!
+
+<a href="https://github.com/rust-util-collections/chaindev/graphs/contributors">
+  <img src="https://contributors-img.web.app/image?repo=rust-util-collections/chaindev"/>
+</a>
