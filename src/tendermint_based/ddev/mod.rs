@@ -392,11 +392,10 @@ where
             }};
         }
 
+        add_initial_nodes!(Seed);
         for _ in 0..opts.initial_validator_num {
             add_initial_nodes!(Node);
         }
-
-        add_initial_nodes!(Seed);
 
         env.gen_genesis(&opts.app_state)
             .c(d!())
