@@ -25,7 +25,7 @@ pub use host::{Host, HostAddr, HostAddrRef, Hosts};
 
 static GLOBAL_BASE_DIR: Lazy<String> = Lazy::new(|| format!("{}/__D_DEV__", &*BASE_DIR));
 
-#[macro_export(crate)]
+#[macro_export]
 macro_rules! check_errlist {
     ($errlist: expr) => {{
         if $errlist.is_empty() {
