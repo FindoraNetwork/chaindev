@@ -207,8 +207,8 @@ where
     #[serde(rename = "block_interval_in_seconds")]
     pub block_itv_secs: BlockItv,
 
-    #[serde(rename = "seed_nodes")]
-    pub seeds: BTreeMap<NodeId, N>,
+    #[serde(rename = "bootstrap_nodes")]
+    pub bootstraps: BTreeMap<NodeId, N>,
 
     #[serde(rename = "validator_or_full_nodes")]
     pub nodes: BTreeMap<NodeId, N>,
@@ -357,7 +357,7 @@ where
                 tendermint_extra_opts: opts.tendermint_extra_opts.clone(),
                 block_itv_secs: opts.block_itv_secs,
                 nodes: Default::default(),
-                seeds: Default::default(),
+                bootstraps: Default::default(),
                 genesis: None,
                 custom_data: opts.custom_data.clone(),
                 next_node_id: Default::default(),
@@ -392,7 +392,7 @@ where
             }};
         }
 
-        add_initial_nodes!(Seed);
+        add_initial_nodes!(Bootstrap);
         for _ in 0..opts.initial_validator_num {
             add_initial_nodes!(Node);
         }
@@ -407,7 +407,7 @@ where
     fn start(&mut self, n: Option<NodeId>) -> Result<()> {
         let ids = n.map(|id| vec![id]).unwrap_or_else(|| {
             self.meta
-                .seeds
+                .bootstraps
                 .keys()
                 .chain(self.meta.nodes.keys())
                 .copied()
@@ -424,7 +424,7 @@ where
                 let hdr = s.spawn(|| {
                     if let Some(n) = self.meta.nodes.get(i) {
                         n.start(self).c(d!())
-                    } else if let Some(n) = self.meta.seeds.get(i) {
+                    } else if let Some(n) = self.meta.bootstraps.get(i) {
                         n.start(self).c(d!())
                     } else {
                         Err(eg!("not exist"))
@@ -460,7 +460,7 @@ where
             self.meta
                 .nodes
                 .values()
-                .chain(self.meta.seeds.values())
+                .chain(self.meta.bootstraps.values())
                 .map(|n| s.spawn(|| info!(n.stop(), &n.host.addr)))
                 .collect::<Vec<_>>()
                 .into_iter()
@@ -494,7 +494,7 @@ where
 
         let errlist = thread::scope(|s| {
             self.meta
-                .seeds
+                .bootstraps
                 .values()
                 .chain(self.meta.nodes.values())
                 .map(|n| s.spawn(|| n.clean().c(d!())))
@@ -556,7 +556,7 @@ where
             .map(|_| ())
     }
 
-    // seed nodes are kept by system for now,
+    // bootstrap nodes are kept by system for now,
     // so only the other nodes can be added on demand
     fn push_node(&mut self) -> Result<()> {
         let id = self.next_node_id();
@@ -567,7 +567,7 @@ where
             .and_then(|_| self.start(Some(id)).c(d!()))
     }
 
-    // seed nodes and the first fullnode can not be removed.
+    // bootstrap nodes and the first fullnode can not be removed.
     fn kick_node(&mut self) -> Result<()> {
         self.meta
             .nodes
@@ -649,7 +649,7 @@ where
     }
 
     // 1. allocate host and ports
-    // 2. change configs: ports, seed address, etc.
+    // 2. change configs: ports, bootstrap address, etc.
     // 3. write new configs of tendermint to local/remote disk
     // 4. insert new node to the meta of env
     fn alloc_resources(&mut self, id: NodeId, kind: Kind) -> Result<()> {
@@ -664,7 +664,7 @@ where
         let cfgfile = format!("{}/config/config.toml", &home);
         let role_mark = match kind {
             Kind::Node => "node",
-            Kind::Seed => "seed",
+            Kind::Bootstrap => "bootstrap",
         };
 
         let cmd = format!(
@@ -715,6 +715,7 @@ where
         cfg["rpc"]["max_open_connections"] = toml_value(10_0000);
 
         cfg["p2p"]["pex"] = toml_value(true);
+        cfg["p2p"]["seed_mode"] = toml_value(false);
         cfg["p2p"]["addr_book_strict"] = toml_value(false);
         cfg["p2p"]["allow_duplicate_ip"] = toml_value(true);
         cfg["p2p"]["persistent_peers_max_dial_period"] = toml_value("3s");
@@ -751,13 +752,11 @@ where
 
         match kind {
             Kind::Node => {
-                cfg["p2p"]["seed_mode"] = toml_value(false);
                 cfg["p2p"]["max_num_inbound_peers"] = toml_value(40);
                 cfg["p2p"]["max_num_outbound_peers"] = toml_value(10);
                 cfg["tx_index"]["indexer"] = toml_value("null");
             }
-            Kind::Seed => {
-                cfg["p2p"]["seed_mode"] = toml_value(true);
+            Kind::Bootstrap => {
                 cfg["p2p"]["max_num_inbound_peers"] = toml_value(400);
                 cfg["p2p"]["max_num_outbound_peers"] = toml_value(100);
                 cfg["tx_index"]["indexer"] = toml_value("kv");
@@ -792,7 +791,7 @@ where
 
         match kind {
             Kind::Node => self.meta.nodes.insert(id, node),
-            Kind::Seed => self.meta.seeds.insert(id, node),
+            Kind::Bootstrap => self.meta.bootstraps.insert(id, node),
         };
 
         Ok(())
@@ -801,53 +800,12 @@ where
     fn update_peer_cfg(&self) -> Result<()> {
         let errlist = thread::scope(|s| {
             let mut hdrs = vec![];
-            for n in self.meta.nodes.values() {
-                let hdr = s.spawn(|| {
-                    let remote = Remote::from(&n.host);
-                    let cfgfile = format!("{}/config/config.toml", &n.home);
-                    let mut cfg = remote
-                        .read_file(&cfgfile)
-                        .c(d!())
-                        .and_then(|c| c.parse::<Document>().c(d!()))?;
-                    cfg["p2p"]["seeds"] = toml_value(
-                        self.meta
-                            .seeds
-                            .values()
-                            .map(|n| {
-                                format!(
-                                    "{}@{}:{}",
-                                    &n.tm_id,
-                                    &n.host.addr,
-                                    n.ports.get_sys_p2p()
-                                )
-                            })
-                            .collect::<Vec<_>>()
-                            .join(","),
-                    );
-                    cfg["p2p"]["persistent_peers"] = toml_value(
-                        self.meta
-                            .nodes
-                            .values()
-                            .filter(|peer| peer.id != n.id)
-                            .map(|n| {
-                                format!(
-                                    "{}@{}:{}",
-                                    &n.tm_id,
-                                    &n.host.addr,
-                                    n.ports.get_sys_p2p()
-                                )
-                            })
-                            .collect::<Vec<_>>()
-                            .join(","),
-                    );
-                    remote
-                        .write_file(&cfgfile, cfg.to_string().as_bytes())
-                        .c(d!())
-                });
-                hdrs.push(hdr);
-            }
-
-            for n in self.meta.seeds.values() {
+            for n in self
+                .meta
+                .nodes
+                .values()
+                .chain(self.meta.bootstraps.values())
+            {
                 let hdr = s.spawn(|| {
                     let remote = Remote::from(&n.host);
                     let cfgfile = format!("{}/config/config.toml", &n.home);
@@ -859,6 +817,7 @@ where
                         self.meta
                             .nodes
                             .values()
+                            .chain(self.meta.bootstraps.values())
                             .filter(|peer| peer.id != n.id)
                             .map(|n| {
                                 format!(
@@ -982,7 +941,7 @@ where
     fn apply_genesis(&self, n: Option<NodeId>) -> Result<()> {
         let nodes = n.map(|id| vec![id]).unwrap_or_else(|| {
             self.meta
-                .seeds
+                .bootstraps
                 .keys()
                 .chain(self.meta.nodes.keys())
                 .copied()
@@ -997,7 +956,7 @@ where
                         .meta
                         .nodes
                         .get(n)
-                        .or_else(|| self.meta.seeds.get(n))
+                        .or_else(|| self.meta.bootstraps.get(n))
                         .c(d!())?;
                     let remote = Remote::from(&n.host);
                     let cfgfile = format!("{}/config/config.toml", &n.home);
@@ -1084,7 +1043,7 @@ where
             .max_by(|a, b| a.1.cmp(&b.1))
             .c(d!("BUG"))?;
 
-        let h = if matches!(node_kind, Kind::Seed) {
+        let h = if matches!(node_kind, Kind::Bootstrap) {
             max_host
         } else {
             let mut seq = self
@@ -1115,7 +1074,7 @@ where
         let port_is_free = |p: &u16| !occupied.contains(p);
 
         let mut res = vec![];
-        if matches!(node_kind, Kind::Seed)
+        if matches!(node_kind, Kind::Bootstrap)
             && ENV_NAME_DEFAULT == self.meta.name.as_ref()
             && reserved.iter().all(|hp| !PC.contains(hp))
             && reserved_ports.iter().all(|p| port_is_free(p))
@@ -1224,7 +1183,7 @@ impl<P: NodePorts> Node<P> {
 enum Kind {
     #[serde(rename = "ValidatorOrFull")]
     Node,
-    Seed,
+    Bootstrap,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]

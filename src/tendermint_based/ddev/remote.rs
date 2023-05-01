@@ -299,7 +299,7 @@ where
         env.meta
             .nodes
             .values()
-            .chain(env.meta.seeds.values())
+            .chain(env.meta.bootstraps.values())
             .flat_map(|n| {
                 ["app.log", "tendermint.log", "mgmt.log"].iter().map(|log| {
                     (
