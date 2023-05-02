@@ -484,9 +484,11 @@ where
         cfg["p2p"]["seed_mode"] = toml_value(false);
         cfg["p2p"]["addr_book_strict"] = toml_value(false);
         cfg["p2p"]["allow_duplicate_ip"] = toml_value(true);
-        cfg["p2p"]["persistent_peers_max_dial_period"] = toml_value("3s");
-        cfg["p2p"]["send_rate"] = toml_value(64 * MB);
-        cfg["p2p"]["recv_rate"] = toml_value(64 * MB);
+        cfg["p2p"]["persistent_peers_max_dial_period"] = toml_value("30s");
+        cfg["p2p"]["flush_throttle_timeout"] = toml_value("0ms");
+        cfg["p2p"]["send_rate"] = toml_value(GB);
+        cfg["p2p"]["recv_rate"] = toml_value(GB);
+        cfg["p2p"]["max_packet_msg_payload_size"] = toml_value(MB);
         cfg["p2p"]["laddr"] = toml_value(format!(
             "tcp://{}:{}",
             &self.meta.host_ip,
@@ -494,11 +496,11 @@ where
         ));
 
         cfg["consensus"]["timeout_propose"] = toml_value("32s");
-        cfg["consensus"]["timeout_propose_delta"] = toml_value("100ms");
-        cfg["consensus"]["timeout_prevote"] = toml_value("2s");
-        cfg["consensus"]["timeout_prevote_delta"] = toml_value("100ms");
-        cfg["consensus"]["timeout_precommit"] = toml_value("2s");
-        cfg["consensus"]["timeout_precommit_delta"] = toml_value("100ms");
+        cfg["consensus"]["timeout_propose_delta"] = toml_value("500ms");
+        cfg["consensus"]["timeout_prevote"] = toml_value("0s");
+        cfg["consensus"]["timeout_prevote_delta"] = toml_value("500ms");
+        cfg["consensus"]["timeout_precommit"] = toml_value("0s");
+        cfg["consensus"]["timeout_precommit_delta"] = toml_value("500ms");
         let block_itv = self
             .meta
             .block_itv_secs
@@ -508,14 +510,16 @@ where
             + "ms";
         cfg["consensus"]["timeout_commit"] = toml_value(&block_itv);
         cfg["consensus"]["skip_timeout_commit"] = toml_value(false);
-        cfg["consensus"]["create_empty_blocks"] = toml_value(false);
+        cfg["consensus"]["create_empty_blocks"] = toml_value(true);
         cfg["consensus"]["create_empty_blocks_interval"] = toml_value(&block_itv);
 
         cfg["mempool"]["recheck"] = toml_value(false);
         cfg["mempool"]["broadcast"] = toml_value(true);
-        cfg["mempool"]["size"] = toml_value(200_0000);
-        cfg["mempool"]["cache_size"] = toml_value(200_0000);
-        cfg["mempool"]["max_txs_bytes"] = toml_value(5 * GB);
+        cfg["mempool"]["size"] = toml_value(1_000_000);
+        cfg["mempool"]["cache_size"] = toml_value(2_000_000);
+        cfg["mempool"]["max_txs_bytes"] = toml_value(10 * GB);
+        cfg["mempool"]["max_tx_bytes"] = toml_value(5 * MB);
+        cfg["mempool"]["ttl-num-blocks"] = toml_value(16);
 
         cfg["moniker"] = toml_value(format!("{}-{}", &self.meta.name, id));
 
@@ -683,7 +687,7 @@ where
                             g["app_state"] =
                                 serde_json::to_value(app_state.clone()).c(d!())?;
                             g["consensus_params"]["block"]["max_bytes"] =
-                                serde_json::to_value((MB * 2).to_string()).unwrap();
+                                serde_json::to_value((MB * 10).to_string()).unwrap();
                             self.meta.genesis = Some(serde_json::from_value(g).c(d!())?);
                             Ok(())
                         })
