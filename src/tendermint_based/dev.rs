@@ -455,30 +455,18 @@ where
             ports.get_sys_abci()
         ));
 
-        #[cfg(all(target_os = "linux", feature = "unix_abstract_socket"))]
-        {
-            // Use 'unix abstract socket address', `man unix(7)` for more infomation.
-            // A '@'-prefix is necessary for tendermint(written in go) to distinguish its type
-            cfg["rpc"]["laddr"] = toml_value(format!(
-                "unix://@{}{}",
-                rand::random::<u64>(),
-                &self.meta.name
-            ));
-        }
-
-        #[cfg(any(not(target_os = "linux"), not(feature = "unix_abstract_socket")))]
-        {
-            cfg["rpc"]["laddr"] = toml_value(format!(
-                "tcp://{}:{}",
-                &self.meta.host_ip,
-                ports.get_sys_rpc()
-            ));
-        }
+        cfg["rpc"]["laddr"] = toml_value(format!(
+            "tcp://{}:{}",
+            &self.meta.host_ip,
+            ports.get_sys_rpc()
+        ));
 
         let mut arr = Array::new();
         arr.push("*");
         cfg["rpc"]["cors_allowed_origins"] = toml_value(arr);
         cfg["rpc"]["max_open_connections"] = toml_value(10_0000);
+
+        cfg["tx_index"]["indexer"] = toml_value("null");
 
         cfg["p2p"]["pex"] = toml_value(true);
         cfg["p2p"]["seed_mode"] = toml_value(false);
@@ -494,24 +482,21 @@ where
             &self.meta.host_ip,
             ports.get_sys_p2p()
         ));
+        cfg["p2p"]["max_num_inbound_peers"] = toml_value(40);
+        cfg["p2p"]["max_num_outbound_peers"] = toml_value(10);
 
-        cfg["consensus"]["timeout_propose"] = toml_value("32s");
+        cfg["consensus"]["timeout_propose"] = toml_value("8s");
         cfg["consensus"]["timeout_propose_delta"] = toml_value("500ms");
         cfg["consensus"]["timeout_prevote"] = toml_value("0s");
         cfg["consensus"]["timeout_prevote_delta"] = toml_value("500ms");
         cfg["consensus"]["timeout_precommit"] = toml_value("0s");
         cfg["consensus"]["timeout_precommit_delta"] = toml_value("500ms");
-        let block_itv = self
-            .meta
-            .block_itv_secs
-            .to_millisecond()
-            .c(d!())?
-            .to_string()
-            + "ms";
-        cfg["consensus"]["timeout_commit"] = toml_value(block_itv);
-        cfg["consensus"]["skip_timeout_commit"] = toml_value(false);
+
+        // Avoid creating empty blocks,
+        // also, we should not change the AppHash without new transactions
+        cfg["consensus"]["timeout_commit"] = toml_value("0s");
         cfg["consensus"]["create_empty_blocks"] = toml_value(false);
-        // cfg["consensus"]["create_empty_blocks_interval"] = toml_value(&block_itv);
+        cfg["consensus"]["create_empty_blocks_interval"] = toml_value("0s");
 
         cfg["mempool"]["recheck"] = toml_value(false);
         cfg["mempool"]["broadcast"] = toml_value(true);
@@ -519,23 +504,9 @@ where
         cfg["mempool"]["cache_size"] = toml_value(2_000_000);
         cfg["mempool"]["max_txs_bytes"] = toml_value(10 * GB);
         cfg["mempool"]["max_tx_bytes"] = toml_value(5 * MB);
-        cfg["mempool"]["ttl-num-blocks"] = toml_value(16);
+        cfg["mempool"]["ttl-num-blocks"] = toml_value(4);
 
         cfg["moniker"] = toml_value(format!("{}-{}", &self.meta.name, id));
-
-        match kind {
-            Kind::Node => {
-                cfg["p2p"]["max_num_inbound_peers"] = toml_value(40);
-                cfg["p2p"]["max_num_outbound_peers"] = toml_value(10);
-                cfg["tx_index"]["indexer"] = toml_value("null");
-            }
-            Kind::Bootstrap => {
-                cfg["p2p"]["max_num_inbound_peers"] = toml_value(400);
-                cfg["p2p"]["max_num_outbound_peers"] = toml_value(100);
-                cfg["tx_index"]["indexer"] = toml_value("kv");
-                cfg["tx_index"]["index_all_keys"] = toml_value(true);
-            }
-        }
 
         // 3.
         let node = Node {
